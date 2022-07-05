@@ -1,0 +1,77 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "snapshotInitialize: Microsoft production cloud",
+            "type": "al",
+            "request": "snapshotInitialize",
+            "environmentType": "Production",
+            "environmentName": "production",
+            "tenant": "default",
+            "breakOnNext": "WebClient",
+            "executionContext": "Debug"
+        },
+       
+        {
+            "name": "PCSandbox Attach",
+            "type": "al",
+            "request": "attach",
+            "environmentType": "Production",
+            "environmentName": "Production",
+            "breakOnError": true,
+            "breakOnRecordWrite": false,
+            "enableSqlInformationDebugger": true,
+            "enableLongRunningSqlStatements": true,
+            "longRunningSqlStatementsThreshold": 500,
+            "numberOfSqlStatements": 10,
+            "breakOnNext": "WebServiceClient"
+        },
+        {
+            "name": "PCDev",
+            "type": "al",
+            "request": "launch",
+            "environmentType": "Sandbox",
+            "environmentName": "PCDev",
+            "startupObjectId": 31,
+            "breakOnError": true,
+            "breakOnRecordWrite": false,
+            "launchBrowser": true,
+            "schemaUpdateMode": "ForceSync",
+            "enableSqlInformationDebugger": true,
+            "enableLongRunningSqlStatements": true,
+            "longRunningSqlStatementsThreshold": 500,
+            "numberOfSqlStatements": 10
+        },
+        {
+            "name": "PCTest",
+            "type": "al",
+            "request": "launch",
+            "environmentType": "Sandbox",
+            "environmentName": "PCTest",
+            "startupObjectId": 31,
+            "breakOnError": true,
+            "breakOnRecordWrite": false,
+            "launchBrowser": true,
+            "schemaUpdateMode": "ForceSync",
+            "enableSqlInformationDebugger": true,
+            "enableLongRunningSqlStatements": true,
+            "longRunningSqlStatementsThreshold": 500,
+            "numberOfSqlStatements": 10
+        },
+        {
+            "type": "al",
+            "request": "launch",
+            "name": "LOCAL TEST",
+            "server": "http://localhost",
+            "serverInstance": "BC160",
+            "authentication": "Windows",
+            "schemaUpdateMode": "ForceSync",
+            "startupObjectId": 459,
+            "startupObjectType": "Page",
+            "breakOnError": true,
+            "launchBrowser": true,
+            "enableLongRunningSqlStatements": true,
+            "enableSqlInformationDebugger": true
+        }
+    ]
+}
