@@ -248,8 +248,9 @@ page 80006 "PC Shopify Orders"
                     var
                         cu:Codeunit "PC Shopify Routines";
                     begin
-                        If confirm('Retrieve Orders Using this record as Start index',False) then
-                            Cu.Get_Shopify_Orders(Rec."Shopify Order ID");
+                        If confirm(StrSubstNo('Retrieve Orders Using This Record As Start index'
+                                    + ' And Order No %1 As The End Order No.',EndOrdNo),False) then
+                            Cu.Get_Shopify_Orders(Rec."Shopify Order ID",EndOrdNo);
                     end;
                     trigger OnAssistEdit()
                     var
@@ -378,25 +379,6 @@ page 80006 "PC Shopify Orders"
 
 
                 }
- /*               field("Credit Card Total"; rec."Credit Card Total")
-                {
-                    ApplicationArea = All;
-                    Editable = false;
-                    trigger OnDrillDown()
-                    begin
-                        Show_Order_Lines();
-                    end;
-                }
-                field("Store Credit Total"; rec."Store Credit Total")
-                {
-                    ApplicationArea = All;
-                    Editable = false;
-                    trigger OnDrillDown()
-                    begin
-                        Show_Order_Lines();
-                    end;
-                }
-                */
                 field("Gift Card Total"; rec."Gift Card Total")
                 {
                     ApplicationArea = All;
@@ -442,20 +424,18 @@ page 80006 "PC Shopify Orders"
                         Show_Order_Lines();
                     end;
                 }
-                field(MSG1; Apps)
+                field("Discount Applications";Apps)
                 {
                     ApplicationArea = All;
-                    ShowCaption = false;
                     Style = Strong;
                     trigger OnDrillDown()
                     begin
                         If Apps <> '*' then Show_Order_Apps_Lines();
                     end;
                 }
-                field(MSG2; Excpt)
+                field("Order Exceptions";Excpt)
                 {
                     ApplicationArea = All;
-                    ShowCaption = false;
                     Style = Strong;
                     Editable = False;
                     trigger OnDrillDown()
@@ -463,10 +443,9 @@ page 80006 "PC Shopify Orders"
                         If Excpt <> '*' then Show_Exception_Lines();
                     end;
                 }
-                field(MSG3; Proc)
+                field("Order Processing";Proc)
                 {
                     ApplicationArea = All;
-                    ShowCaption = false;
                     Style = Strong;
                     Editable = false;
                     trigger OnDrillDown()
@@ -479,7 +458,10 @@ page 80006 "PC Shopify Orders"
                         begin
                             if Confirm('Attempt to reprocess this order Now', True) then 
                             begin
-                                Sel := StrMenu('Via Fulfilio Check,ByPass Fulfilio Check',1);
+                                If Proc = 'Process' then        
+                                    Sel := StrMenu('Via Fulfilio Check,ByPass Fulfilio Check',1)
+                                else
+                                    Sel := 1;    
                                 If Sel > 0 then
                                 begin
                                     Excp.Reset;
@@ -515,6 +497,20 @@ page 80006 "PC Shopify Orders"
                 {
                     ApplicationArea = All;
                     Style = Strong;
+                    trigger OnDrillDown()
+                    var
+                        Cu:Codeunit "PC Shopify Routines";
+                    begin
+                        If Rec."Refunds Checked" then
+                            If Confirm('Do you wish to recheck for possible credits now',False) then
+                            begin
+                                Clear(Rec."Refunds Checked");
+                                Rec.modify(false);
+                                Commit;
+                                Cu.Process_Refunds(Rec."Shopify Order No.");
+                                CurrPage.update(false);           
+                            end;
+                    end;        
                 }
             }
             Group(Totals)
@@ -525,13 +521,22 @@ page 80006 "PC Shopify Orders"
                     Style = Strong;
                     ShowCaption = True;
                 }
-            }
                 field("Filtered Record Value"; Get_Value())
                 {
                     ApplicationArea = All;
                     Style = Strong;
                     ShowCaption = True;
                 }
+            }
+            Group(Debug)
+            {
+                field("Debug Shopify Order No";EndOrdNo)
+                {
+                    ApplicationArea = All;
+                    Style = Strong;
+                    ShowCaption = True;
+                }
+            }    
         }
     }
     actions
@@ -553,7 +558,7 @@ page 80006 "PC Shopify Orders"
                         Cu: Codeunit "PC Shopify Routines";
                     begin
                         If Confirm('Retrieve Orders From Shopify Now?', True) then
-                            Cu.Get_Shopify_Orders(0);
+                            Cu.Get_Shopify_Orders(0,0);
                         CurrPage.update(false);
                     end;
                 }
@@ -602,6 +607,8 @@ page 80006 "PC Shopify Orders"
                 Apps := 'Order Apps';
         Proc := '*';
         If Excpt <> '*' then Proc := 'Process';
+        If (Rec."Order Type" = Rec."Order Type"::CreditMemo) 
+            and (Rec."Order Status" = Rec."Order Status"::Open) then Proc := 'Credit Process';
     end;
 
     Local procedure Show_Order_Lines()
@@ -706,7 +713,7 @@ page 80006 "PC Shopify Orders"
         TransFilter: array[2] of date;
         OrdDateFilter: array[2] of date;
         Stat: option " ",Open,Closed;
-        Type: option " ",Invoice,"Credit Memo";
+        Type: option " ",Invoice,"Credit Memo",Cancelled;
         Fstat: option " ",Incomplete,Complete;
         OrdNo:Integer;
         OrdID:BigInteger;
@@ -714,5 +721,5 @@ page 80006 "PC Shopify Orders"
         Apps: text[20];
         Proc: text[20];
         OrdStat: Option " ",FULFILLED,PARTIAL,NULL;
-
+        EndOrdNo:BigInteger;
 }

@@ -19,7 +19,7 @@ pageextension 80003 "PC Customer List Ext" extends "Customer List"
                     Cu: Codeunit "PC Shopify Routines";
                begin
                     If Confirm('Retrieve Orders From Shopify Now?',True) then
-                        Cu.Get_Shopify_Orders(0);
+                        Cu.Get_Shopify_Orders(0,0);
                 end;
             }
             action("PCB")
@@ -74,7 +74,7 @@ pageextension 80003 "PC Customer List Ext" extends "Customer List"
                     end;
                 end;
             }
-            action("PCF")
+    /*        action("PCF")
             {
                 ApplicationArea = All;
                 Caption = 'Shopify Daily Reconciliation';
@@ -83,7 +83,8 @@ pageextension 80003 "PC Customer List Ext" extends "Customer List"
                 PromotedCategory = Category10;
                 RunObject = Page "PC Shopify Order Recon";
             }
-            action("PCF2")
+    */        
+            action("PCF")
             {
                 ApplicationArea = All;
                 Caption = 'Shopify Order Reconciliation';

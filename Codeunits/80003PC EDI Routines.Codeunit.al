@@ -627,7 +627,7 @@ codeunit 80003 "PC EDI Routines"
                     If PurchHdr."EDI Transaction Status" = PurchHdr."EDI Transaction Status"::" " then
                     begin
                         Build_EDI_Purchase_Order(PurchHdr,'ORIGINAL');
-                        EDI_Execution_Transaction_Log(PurchHdr);
+                        EDI_Execution_Transaction_Log(PurchHdr,0);
                     end;
                     if (PurchHdr."Fulfilo Order ID" > 0) And (PurchHdr."Fulfilo ASN Status" <> PurchHdr."Fulfilo ASN Status"::Completed) then
                         CUF.Get_ASN_Order_Status(PurchHdr,False);
@@ -662,7 +662,7 @@ codeunit 80003 "PC EDI Routines"
         Exlog."EDI Execution Action" := EDIBuff."Response Type";
         Exlog.modify;
     end; 
-    local procedure EDI_Execution_Transaction_Log(var PO:Record "Purchase Header")
+    local procedure EDI_Execution_Transaction_Log(var PO:Record "Purchase Header";RespType:Integer)
     var
         EXLog:Record "PC EDI Execution Log";
     begin
@@ -672,6 +672,7 @@ codeunit 80003 "PC EDI Routines"
         EXLog."Execution Date/Time" := CurrentDateTime();
         Exlog."Purchase Order No." := PO."No.";
         EXLog.Vendor := PO."Buy-from Vendor No.";
+        Exlog."EDI Execution Action" := RespType;
         Exlog."Transaction Status" := PO."EDI Transaction Status";
         Exlog.modify;
     end; 
@@ -1699,7 +1700,7 @@ codeunit 80003 "PC EDI Routines"
                            If FirstResp or respChg then
                            begin 
                                 Build_EDI_Purchase_Order(PurchHdr,'REPLACE');
-                                EDI_Execution_Transaction_Log(PurchHdr);
+                                EDI_Execution_Transaction_Log(PurchHdr,1);
                            end;    
                     end;
                     EDIHdrBuff."Response Type"::Dispatch:

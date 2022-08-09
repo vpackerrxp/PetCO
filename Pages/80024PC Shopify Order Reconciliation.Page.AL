@@ -278,7 +278,7 @@ page 80024 "PC Shopify Order Recon"
                     Style = Strong;
                     trigger OnDrillDown()
                     var
-                        Cu:Codeunit "PC Shopify Routines";
+                        Cu:Codeunit "PC Reconcillations";
                     begin
                         If (PayType <> PayType::" ") AND (PSTDate <> 0D) then
                         begin 
@@ -545,7 +545,7 @@ page 80024 "PC Shopify Order Recon"
                 ApplicationArea = All;
                 trigger OnAction();
                 var
-                    Cu:Codeunit "PC Shopify Routines";
+                    Cu:Codeunit "PC Reconcillations";
                 begin
                     If (PayType <> PayType::" ") AND (PSTDate <> 0D) then
                     begin 

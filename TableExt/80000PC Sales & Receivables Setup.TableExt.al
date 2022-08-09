@@ -84,6 +84,17 @@ tableextension 80000 "PC Sales & Receivables Ext " extends "Sales & Receivables 
         {}
         field(80041; "PO CC email Address"; text[80])
         {}
+        field(80042; "Gmail Acc Email Password"; text[80])
+        {}
+        field(80043; "Gmail Ops Email Password"; text[80])
+        {}
+        field(80044; "Refund Order Lookback Period"; integer)
+        {
+            MinValue = 1;
+            InitValue = 2;
+            MaxValue = 4;
+            Caption = 'Refund Order Lookback Period in Weeks';
+        }
         field(80050; "Gift Card Order Index"; Biginteger)
         {}
 

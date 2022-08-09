@@ -102,33 +102,43 @@ pageextension 80000 "PC Sales & Rec Setup Ext" extends "Sales & Receivables Setu
                                 Message('Please provide all Shopify parameters.');;                       
                         end;
                     }
-                    field("Shopify Order No. Offset"; rec."Shopify Order No. Offset")
+                    Group(Orders)
                     {
-                        ApplicationArea = All;
+                        field("Shopify Order No. Offset"; rec."Shopify Order No. Offset")
+                        {
+                            ApplicationArea = All;
+                        }
+                        field("Bypass Date Filter";rec."Bypass Date Filter")
+                        {
+                            ApplicationArea = All;
+                        }
+                        field("Refund Order Lookback Period";rec."Refund Order Lookback Period")
+                        {
+                            ApplicationArea = All;
+                        }
                     }
-                    field("Bypass Date Filter";rec."Bypass Date Filter")
+                    Group(Exceptions)
                     {
-                        ApplicationArea = All;
-                    }
-                    field("Exception Email Address"; rec."Exception Email Address")
-                    {
-                        ApplicationArea = All;
-                        ExtendedDatatype = EMail;
-                        trigger OnAssistEdit()
-                        var 
-                            cu:Codeunit "PC Shopify Routines";
-                        begin
-                            rec.Modify;
-                            Commit;
-                            Rec.Get;
-                            If Confirm('Send Test Email', true) then
+                        field("Exception Email Address"; rec."Exception Email Address")
+                        {
+                            ApplicationArea = All;
+                            ExtendedDatatype = EMail;
+                            trigger OnAssistEdit()
+                            var 
+                                cu:Codeunit "PC Shopify Routines";
                             begin
-                                If Cu.Send_Email_Msg('Test Email','This is a test',True,'') then
-                                    Message('Email Sent Successfully')
-                                else
-                                    Message('Failed To Send Email');
-                            end;  
-                        end;
+                                rec.Modify;
+                                Commit;
+                                Rec.Get;
+                                If Confirm('Send Test Email', true) then
+                                begin
+                                    If Cu.Send_Email_Msg('Test Email','This is a test',True,'') then
+                                        Message('Email Sent Successfully')
+                                    else
+                                        Message('Failed To Send Email');
+                                end;  
+                            end;
+                        }
                     }
                 }  
                 Group(FulFilio)
@@ -377,8 +387,28 @@ pageextension 80000 "PC Sales & Rec Setup Ext" extends "Sales & Receivables Setu
                     {
                         ApplicationArea = All;
                     }
-                }    
-
+                }
+                group(Gmail)
+                {
+                    Field("Gmail Account Email Password";rec."Gmail Acc Email Password")
+                    {
+                        ApplicationArea = All;
+                        ExtendedDatatype = Masked;
+                        trigger OnAssistEdit()
+                        begin
+                            Message(StrSubstNo('%1', rec."Gmail Acc Email Password"));
+                        end;
+                    }
+                     Field("Gmail Operation Email Password";rec."Gmail Ops Email Password")
+                    {
+                        ApplicationArea = All;
+                        ExtendedDatatype = Masked;
+                        trigger OnAssistEdit()
+                        begin
+                            Message(StrSubstNo('%1', rec."Gmail Ops Email Password"));
+                        end;
+                    }
+                }
             }
         }        
     }
@@ -484,12 +514,55 @@ pageextension 80000 "PC Sales & Rec Setup Ext" extends "Sales & Receivables Setu
                 trigger OnAction()
                 var
                     Cu:Codeunit Test;
+                    CU2:Codeunit "PC Reconcillations";
                     Excp:record "PC Shopify Order Exceptions";
+                    Cu1:Codeunit "PC Shopify Routines";
+                    PO:record "Purchase Header";
+                    Ven:record Vendor;
+                    Pg:page "PC Reverse Apply Selections";
+                    Sel:Record Item;
+                    Em:text;
+                    BI:BigInteger;
                 begin
+                    //pg.LookupMode := true;
+                    //Pg.SetApplyType(1);
+                    //If Pg.RunModal() = Action::LookupOK then
+                    //begin
+                        //Pg.GetRecord(Sel);
+                        //If Confirm(strsubstno('Proceed using %1 document now?',Sel."No."),true) then
+                        Cu2.Reverse_Reconcillation_TransactionsEX('');
+                    //end;
+                    exit;
+                    CU2.Reverse_Reconcillation_Transactions('');
+                    //Cu.Fix_Accounts();
+                    Exit;
                     //Excp.Reset;
                     //if Excp.Findset then Excp.DeleteAll();
-                   //Cu1.Get_Shopify_Orders(1);
-                    Cu.Testrun();
+                    Evaluate(BI,'4664639651950');
+                    Cu1.Get_Shopify_Orders(BI,0);
+                    Exit;
+                    Pg.LookupMode := True;
+                    If Pg.RunModal() = Action::LookupOK then
+                    begin
+                        Pg.GetRecord(PO);
+                        if PO.Get(PO."Document Type"::Order,PO."No.") then
+                        begin
+                            ven.get(PO."Buy-from Vendor No.");
+                            EM := ven."Operations E-Mail";
+                            ven."Operations E-Mail" := 'vpacker@practiva.com.au';
+                            ven.modify(false);
+                            Commit;
+                            CU1.Send_PO_Email(PO);
+                            ven."Operations E-Mail" := EM;
+                            ven.modify(false);
+                            Commit;
+                        end;
+                    end;
+
+                   
+                   //
+                   //CU1.Send_PO_Email(PO)
+                   // Cu.Testrun();
                     //Cu.Testrun2();
                    /* SinvLine.reset;
 //                    SinvLine.Setfilter("No.",'<>SHIPPING');

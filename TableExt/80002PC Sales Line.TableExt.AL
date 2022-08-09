@@ -67,5 +67,9 @@ tableextension 80002 "PC Sales Line Ext" extends "Sales Line"
                         WHERE ("Shopify Order ID"=field("Shopify Order ID")));
             Editable = false;
         }
+        field(80011;"Shopify Order Date";Date)
+        {
+           Editable = false;
+        }
     }   
 }

@@ -43,7 +43,7 @@ table 80002 "PC Shopify Order Header"
         }
         field(100;"Order Type";Option)
         {
-            OptionMembers = Invoice,CreditMemo;
+            OptionMembers = Invoice,CreditMemo,Cancelled;
             Editable = False;       
         }
         field(110;"BC Reference No.";Code[20])
@@ -113,7 +113,7 @@ table 80002 "PC Shopify Order Header"
         }
         field(300;"Refunds Checked";Boolean)
         {
-            //Editable = false;
+            Editable = false;
         }
         Field(1000;"Shopify Refund Order ID";BigInteger)
         {

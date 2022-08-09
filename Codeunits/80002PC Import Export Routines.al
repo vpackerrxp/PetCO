@@ -2067,6 +2067,7 @@ Codeunit 80002 "PC Import Export Routines"
     begin
         CRLF[1] := 13;
         CRLF[2] := 10;
+        ReCon.setrange("Apply Status",Recon."Apply Status"::UnApplied);
         If ReCon.findset then
         begin
             BlobTmp.CreateOutStream(OutStrm);
@@ -2101,7 +2102,7 @@ Codeunit 80002 "PC Import Export Routines"
         Total:Decimal;
         RecCnt:Integer;
         Fee:Decimal;
-        CU:Codeunit "PC Shopify Routines";
+        CU:Codeunit "PC Reconcillations";
         CRLF:text[2];
     begin
         CRLF[1] := 13;
@@ -2138,7 +2139,7 @@ Codeunit 80002 "PC Import Export Routines"
                         If Not Evaluate(ShopID,Flds.get(1)) then
                             Error('Shopify Order ID is not valid');
                         Case Flds.get(2).ToUpper() of 
-                            'INVOICE':OrdType := 0;
+                            'INVOICE','CANCELLED':OrdType := 0;
                             'REFUND':OrdType := 1;
                             else
                                 OrdType := -1;
@@ -2153,9 +2154,12 @@ Codeunit 80002 "PC Import Export Routines"
                                 AND (RecData."Order Total" = Total) then
                             begin
                                 If GuiAllowed then Win.Update(1,ShopID);
-                                ImpData.Copy(RecData);
-                                ImpData.Insert;
-                                RecCnt += 1;
+                                If Not ImpData.Get(RecData."Shopify Order ID",RecData."Shopify Order Type") then
+                                begin    
+                                    ImpData.Copy(RecData);
+                                    ImpData.Insert;
+                                    RecCnt += 1;
+                                end;
                             end;    
                         end;
                     end;

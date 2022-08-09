@@ -30,7 +30,7 @@ codeunit 80000 "PC Shopify Routines"
                 2:
                 begin
                     Log."Operation" := 'Retrieve Shopify Orders';
-                    if Get_Shopify_Orders(0) then
+                    if Get_Shopify_Orders(0,0) then
                         Log.Status := Log.Status::Pass
                     else
                        log."Error Message" := CopyStr(GetLastErrorText,1,250);
@@ -1547,7 +1547,7 @@ codeunit 80000 "PC Shopify Routines"
         Ordhdr.Reset;
         OrdHdr.SetRange("Order Status",Ordhdr."Order Status"::Open);
         If OrdID <> 0 then OrdHdr.setrange(ID,OrdID);
-        OrdHdr.Setrange("Order Type",OrdHdr."Order Type"::CreditMemo);
+        OrdHdr.Setrange("Order Type",OrdHdr."Order Type"::CreditMemo,OrdHdr."Order Type"::Cancelled);
         If OrdHdr.Findset then
         repeat
             Excp.Reset;
@@ -1992,20 +1992,27 @@ codeunit 80000 "PC Shopify Routines"
         end;
         exit(Exflg)
     End;
-    local procedure Build_Order_Reconciliation(var JsRefToken:JsonToken)
+    local procedure Build_Order_Reconciliation(var JsRefToken:JsonToken;CFlg:Boolean)
     var
         OrdRec:array[2] of record "PC Order Reconciliations";
         Jstoken:array[2] of JsonToken;
         JsArry:array[2] of JsonArray;
         Dat:text;
         i,j:integer;
+        Flg:Boolean;
     begin
         JsReftoken.SelectToken('id',Jstoken[2]);
-        If Not OrdRec[1].Get(Jstoken[2].AsValue().AsBigInteger(),Ordrec[1]."Shopify Order Type"::Invoice) then
+        If Cflg then
+            Flg := Not OrdRec[1].Get(Jstoken[2].AsValue().AsBigInteger(),Ordrec[1]."Shopify Order Type"::Cancelled)
+        else
+            Flg := Not OrdRec[1].Get(Jstoken[2].AsValue().AsBigInteger(),Ordrec[1]."Shopify Order Type"::Invoice);
+        If Flg Then
         begin
             OrdRec[1].Init();
             OrdRec[1]."Shopify Order ID" := Jstoken[2].AsValue().AsBigInteger();
             OrdRec[1]."Shopify Order Type" := OrdRec[1]."Shopify Order Type"::Invoice;
+            If CFlg then
+                OrdRec[1]."Shopify Order Type" := OrdRec[1]."Shopify Order Type"::Cancelled;
             OrdRec[1].insert;
             JsReftoken.SelectToken('order_number',Jstoken[2]);
             OrdRec[1]."Shopify Order No" := Jstoken[2].AsValue().AsBigInteger();
@@ -2047,13 +2054,14 @@ codeunit 80000 "PC Shopify Routines"
             If OrdRec[2]."Order Total" > 0 then    
                 If Not OrdRec[1].Get(OrdRec[2]."Shopify Order ID",OrdRec[2]."Shopify Order Type") then
                     OrdRec[2].Insert;
-        end;    
+        end;
+        Commit;    
     end;
-    procedure Get_Shopify_Orders(StartIndex:BigInteger):Boolean
+    procedure Get_Shopify_Orders(StartIndex:BigInteger;EndOrderNo:BigInteger):Boolean
     var
-        OrdHdr:record "PC Shopify Order Header";
+        OrdHdr:Array[2] of record  "PC Shopify Order Header";
         OrdApp:record "PC Shopfiy Order Applications";
-        OrdLine:record "PC Shopify Order Lines";
+        OrdLine:Array[2] of record "PC Shopify Order Lines";
         indx:BigInteger;
         Parms:Dictionary of [text,text];
         Data:JsonObject;
@@ -2074,6 +2082,7 @@ codeunit 80000 "PC Shopify Routines"
         TstVal:text;
         recCnt:Integer;
         StartDate:date;
+        CancelFlg:boolean;    
     begin
         if Not Item.Get('GIFT_CARD') then
         begin
@@ -2103,20 +2112,20 @@ codeunit 80000 "PC Shopify Routines"
         Setup.Get;
         Clear(indx);
         Clear(Cnt);
-        OrdHdr.Reset;
-        OrdHdr.SetCurrentKey("Shopify Order No.");
-        if OrdHdr.findlast then Startdate := OrdHdr."Shopify Order Date";
-        OrdHdr.Reset;
-        OrdHdr.SetCurrentKey("Shopify Order No.");
+        OrdHdr[1].Reset;
+        OrdHdr[1].SetCurrentKey("Shopify Order No.");
+        if OrdHdr[1].findlast then Startdate := OrdHdr[1]."Shopify Order Date";
+        OrdHdr[1].Reset;
+        OrdHdr[1].SetCurrentKey("Shopify Order No.");
         Case Date2DWY(today,1) of
-            2,4: OrdHdr.Setfilter("Shopify Order Date",'<=%1',CalcDate('-5D',Startdate));
-            6: OrdHdr.Setfilter("Shopify Order Date",'<=%1',CalcDate('-3W',Startdate));
+            2,4: OrdHdr[1].Setfilter("Shopify Order Date",'<=%1',CalcDate('-5D',Startdate));
+            6: OrdHdr[1].Setfilter("Shopify Order Date",'<=%1',CalcDate('-3W',Startdate));
         end;    
-        if OrdHdr.findlast then Indx := OrdHdr."Shopify Order No."; 
-        OrdHdr.Reset;
-        OrdHdr.SetFilter("Shopify Order No.",'>=%1',Indx);
-        If OrdHdr.FindFirst() then 
-            Indx := OrdHdr."Shopify Order ID"
+        if OrdHdr[1].findlast then Indx := OrdHdr[1]."Shopify Order No."; 
+        OrdHdr[1].Reset;
+        OrdHdr[1].SetFilter("Shopify Order No.",'>=%1',Indx);
+        If OrdHdr[1].FindFirst() then 
+            Indx := OrdHdr[1]."Shopify Order ID"
         else
             Clear(Indx);        
         If StartIndex <> 0 then indx := StartIndex;
@@ -2146,81 +2155,96 @@ codeunit 80000 "PC Shopify Routines"
                 for i := 0 to JsArry[1].Count - 1 do
                 begin
                     JsArry[1].get(i,Jstoken[1]);
+                    Flg := True;
                     if Jstoken[1].SelectToken('order_number',Jstoken[2]) then
                         If Not JsToken[2].asvalue.IsNull then
+                        begin
                             if GuiAllowed then Win.Update(1,Jstoken[2].AsValue().AsBigInteger());
+                            If (EndOrderNo > 0) and (Jstoken[2].AsValue().AsBigInteger() >= EndOrderNo) then
+                            begin    
+                                Clear(Flg);
+                                Clear(Cnt);
+                            end;
+                        end;    
                     Clear(Indx);
-                    Flg := Jstoken[1].SelectToken('id',Jstoken[2]);
+                    If Flg Then Flg := Jstoken[1].SelectToken('id',Jstoken[2]);
                     If Flg Then Flg := Not Jstoken[2].AsValue().IsNull;
                     Indx := Jstoken[2].AsValue().AsBigInteger();
                     If Flg then Flg := Jstoken[1].SelectToken('cancelled_at',Jstoken[2]);
-                    if Flg then Flg := Jstoken[2].AsValue().IsNull;
+                    If Flg then CancelFlg := Not Jstoken[2].AsValue().IsNull; 
                     if Flg Then Flg := Jstoken[1].SelectToken('financial_status',Jstoken[2]);
                     if Flg Then Flg := Not Jstoken[2].AsValue().IsNull;
                     If Flg then Flg := Jstoken[2].AsValue().AsText().ToUpper() in ['PAID','REFUNDED','PARTIALLY_REFUNDED'];
                     If Flg then Flg := Jstoken[1].SelectToken('fulfillment_status',Jstoken[2]);
-                    If Flg THen
+                    If Flg Then
                     Begin
-                        Build_Order_Reconciliation(Jstoken[1]);
-                        Flg := Not Jstoken[2].AsValue().IsNull;
+                        Build_Order_Reconciliation(Jstoken[1],CancelFlg);
+                        IF Not CancelFlg then
+                            Flg := Not Jstoken[2].AsValue().IsNull;
                     end;    
                     if Flg Then Flg := Check_For_Gift_Card(jstoken[1],indx);
                     If Flg then
                     begin
-                        OrdHdr.Reset;
-                        OrdHdr.Setrange("Shopify Order ID",indx);
-                        OrdHdr.Setrange("Order Type",OrdHdr."Order Type"::Invoice);
-                        Flg := not OrdHdr.Findset;
+                        OrdHdr[1].Reset;
+                        OrdHdr[1].Setrange("Shopify Order ID",indx);
+                        OrdHdr[1].SetFilter("Order Type",'%1|%2',OrdHdr[1]."Order Type"::Invoice,OrdHdr[1]."Order Type"::Cancelled);
+                        Flg := not OrdHdr[1].Findset;
                     end;         
                     If Flg then 
                     begin
-                        OrdHdr.init;
-                        Clear(OrdHdr.ID);
-                        OrdHdr.insert(True);
-                        OrdHdr."Order Type" := OrdHdr."Order Type"::Invoice;
-                        OrdHdr."Shopify Order ID" := indx;
-                        //Get_Order_Transactions(OrdHdr);
+                        OrdHdr[1].init;
+                        Clear(OrdHdr[1].ID);
+                        OrdHdr[1].insert(True);
+                        OrdHdr[1]."Order Type" := OrdHdr[1]."Order Type"::Invoice;
+                        OrdHdr[1]."Shopify Order ID" := indx;
                         Jstoken[1].SelectToken('financial_status',Jstoken[2]);
-                        OrdHdr."Shopify Financial Status" := Jstoken[2].AsValue().Astext().ToUpper();
-                        Jstoken[1].SelectToken('fulfillment_status',Jstoken[2]);
-                        Ordhdr."Shopify Order Status" := 'FULFILLED';
-                        If Not Jstoken[2].AsValue().IsNull then
+                        OrdHdr[1]."Shopify Financial Status" := Jstoken[2].AsValue().Astext().ToUpper();
+                        Ordhdr[1]."Shopify Order Status" := 'FULFILLED';
+                        If CancelFlg then
+                        Begin
+                            OrdHdr[1]."Order Type" := OrdHdr[1]."Order Type"::Cancelled;
+                            OrdHdr[1]."Refunds Checked" := true;
+                        end    
+                        else
+                        Begin
+                            Jstoken[1].SelectToken('fulfillment_status',Jstoken[2]);
                             If Jstoken[2].AsValue().Astext().ToUpper() = 'PARTIAL' then
-                                OrdHdr."Shopify Order Status" := 'PARTIAL';
+                                OrdHdr[1]."Shopify Order Status" := 'PARTIAL';
+                        end;            
                         if Jstoken[1].SelectToken('order_number',Jstoken[2]) then
                             If Not JsToken[2].asvalue.IsNull then
                             begin
-                                OrdHdr."Shopify Order No." := Jstoken[2].AsValue().AsBigInteger();
+                                OrdHdr[1]."Shopify Order No." := Jstoken[2].AsValue().AsBigInteger();
                                 if GuiAllowed then
                                 begin 
-                                    Win.Update(2,OrdHdr."Shopify Order No.");
-                                    Win.Update(3,Format(OrdHdr."Order Type"));
+                                    Win.Update(2,OrdHdr[1]."Shopify Order No.");
+                                    Win.Update(3,Format(OrdHdr[1]."Order Type"));
                                 end;    
                             end;    
                         if Jstoken[1].SelectToken('processed_at',Jstoken[2]) then
                             If Not JsToken[2].AsValue().IsNull then
                             begin
                                 Dat:= Copystr(Jstoken[2].AsValue().astext,1,10);
-                                if Evaluate(OrdHdr."Shopify Order Date",Copystr(Dat,9,2) + '/' + Copystr(Dat,6,2) + '/' + Copystr(Dat,1,4)) then;
+                                if Evaluate(OrdHdr[1]."Shopify Order Date",Copystr(Dat,9,2) + '/' + Copystr(Dat,6,2) + '/' + Copystr(Dat,1,4)) then;
                             end;    
                         if Jstoken[1].SelectToken('currency',Jstoken[2]) then
                             If Not JsToken[2].AsValue().IsNull then
-                                OrdHdr."Shopify Order Currency" := CopyStr(Jstoken[2].AsValue().AsCode(),1,10);
+                                OrdHdr[1]."Shopify Order Currency" := CopyStr(Jstoken[2].AsValue().AsCode(),1,10);
                         If Jstoken[1].SelectToken('total_discounts',Jstoken[2]) then
                             If Not JsToken[2].AsValue().IsNull then
-                                OrdHdr."Discount Total" := JsToken[2].AsValue().AsDecimal();
+                                OrdHdr[1]."Discount Total" := JsToken[2].AsValue().AsDecimal();
                         if Jstoken[1].SelectToken('total_price',Jstoken[2]) then
                             If Not JsToken[2].AsValue().IsNull then
-                                OrdHdr."Order Total" := JsToken[2].AsValue().AsDecimal();
+                                OrdHdr[1]."Order Total" := JsToken[2].AsValue().AsDecimal();
                         If Jstoken[1].SelectToken('total_shipping_price_set',Jstoken[2]) then
                             If Jstoken[2].AsObject().SelectToken('shop_money',JsToken[1]) then
                                 If Jstoken[1].Asobject().SelectToken('amount',Jstoken[2]) then
                                     If Not JsToken[2].AsValue().IsNull then
-                                        OrdHdr."Freight Total" := JsToken[2].AsValue().AsDecimal();
+                                        OrdHdr[1]."Freight Total" := JsToken[2].AsValue().AsDecimal();
                         if Jstoken[1].SelectToken('total_tax',Jstoken[2]) then
                             if not Jstoken[2].AsValue().IsNull then
-                                OrdHdr."Tax Total" := JsToken[2].AsValue().AsDecimal();
-                        Ordhdr.Modify();
+                                OrdHdr[1]."Tax Total" := JsToken[2].AsValue().AsDecimal();
+                        Ordhdr[1].Modify();
                         recCnt +=1;
                         if JsArry[1].get(i,Jstoken[1]) Then
                         begin
@@ -2234,8 +2258,8 @@ codeunit 80000 "PC Shopify Routines"
                                         OrdApp.init;
                                         Clear(OrdApp.ID);
                                         OrdApp.Insert;
-                                        OrdApp.ShopifyID := OrdHdr.ID;
-                                        OrdApp."Shopify Order ID" := OrdHdr."Shopify Order ID";
+                                        OrdApp.ShopifyID := OrdHdr[1].ID;
+                                        OrdApp."Shopify Order ID" := OrdHdr[1]."Shopify Order ID";
                                         if JsToken[1].Selecttoken('type',JsToken[2]) then
                                             if not Jstoken[2].AsValue().IsNull then
                                                 OrdApp.validate("Shopify App Type",JsToken[2].AsValue().AsText());
@@ -2266,36 +2290,36 @@ codeunit 80000 "PC Shopify Routines"
                                     for j := 0 to JsArry[2].Count - 1 do
                                     begin
                                         JsArry[2].get(j,JsToken[1]);
-                                        OrdLine.init;
-                                        Clear(OrdLine.ID);
-                                        Ordline.insert;
-                                        Ordline."Shopify Order ID" := OrdHdr."Shopify Order ID";
-                                        Ordline.ShopifyID := OrdHdr.ID;
-                                        Ordline."Order Line No" := (j + 1) * 10;
+                                        OrdLine[1].init;
+                                        Clear(OrdLine[1].ID);
+                                        Ordline[1].insert;
+                                        Ordline[1]."Shopify Order ID" := OrdHdr[1]."Shopify Order ID";
+                                        Ordline[1].ShopifyID := OrdHdr[1].ID;
+                                        Ordline[1]."Order Line No" := (j + 1) * 10;
                                         if JsToken[1].SelectToken('id',JsToken[2]) Then
                                         begin
                                             if not Jstoken[2].AsValue().IsNull then
                                             Begin    
-                                                OrdLine."Order Line ID" := JsToken[2].AsValue().AsBigInteger();
+                                                OrdLine[1]."Order Line ID" := JsToken[2].AsValue().AsBigInteger();
                                                 If JsToken[1].SelectToken('sku',JsToken[2]) then
                                                 begin
                                                     If Not JsToken[2].AsValue().IsNull then
                                                     begin
-                                                        Ordline."Item No." := CopyStr(jstoken[2].AsValue().AsCode(),1,20);
+                                                        Ordline[1]."Item No." := CopyStr(jstoken[2].AsValue().AsCode(),1,20);
                                                         If JsToken[1].SelectToken('gift_card',JsToken[2]) then
                                                             if not Jstoken[2].AsValue().IsNull then
                                                                 if JsToken[2].AsValue().AsBoolean() then
-                                                                    Ordline."Item No." := 'GIFT_CARD';
+                                                                    Ordline[1]."Item No." := 'GIFT_CARD';
                                                         if JsToken[1].SelectToken('quantity',JsToken[2]) then
                                                             if not Jstoken[2].AsValue().IsNull then
-                                                                Ordline."Order Qty" :=  jstoken[2].AsValue().AsDecimal();
+                                                                Ordline[1]."Order Qty" :=  jstoken[2].AsValue().AsDecimal();
                                                         if JsToken[1].SelectToken('price',JsToken[2]) then
                                                             if not Jstoken[2].AsValue().IsNull then
-                                                                Ordline."Unit Price" :=  jstoken[2].AsValue().AsDecimal();
+                                                                Ordline[1]."Unit Price" :=  jstoken[2].AsValue().AsDecimal();
                                                         if JsToken[1].SelectToken('total_discount',JsToken[2]) then
                                                             if not Jstoken[2].AsValue().IsNull then
-                                                                Ordline."Discount Amount" := jstoken[2].AsValue().AsDecimal();
-                                                        Ordline."Shopify Application Index" := -1;
+                                                                Ordline[1]."Discount Amount" := jstoken[2].AsValue().AsDecimal();
+                                                        Ordline[1]."Shopify Application Index" := -1;
                                                         if JsToken[1].SelectToken('discount_allocations',JsToken[2]) then
                                                         begin
                                                             If JsToken[2].AsArray().Count > 0 then
@@ -2303,13 +2327,13 @@ codeunit 80000 "PC Shopify Routines"
                                                                 Jstoken[2].AsArray().get(0,Jstoken[1]);
                                                                 if jstoken[1].SelectToken('discount_application_index',JsToken[2]) then
                                                                     if not Jstoken[2].AsValue().IsNull then
-                                                                        Ordline."Shopify Application Index" := JsToken[2].AsValue().AsInteger();
+                                                                        Ordline[1]."Shopify Application Index" := JsToken[2].AsValue().AsInteger();
                                                                 if jstoken[1].SelectToken('amount',JsToken[2]) then
                                                                     if not Jstoken[2].AsValue().IsNull then
-                                                                        Ordline."Discount Amount" := jstoken[2].AsValue().AsDecimal(); 
+                                                                        Ordline[1]."Discount Amount" := jstoken[2].AsValue().AsDecimal(); 
                                                             end;    
                                                         end;
-                                                        Ordline."Tax Amount" := 0;
+                                                        Ordline[1]."Tax Amount" := 0;
                                                         JsArry[2].get(j,JsToken[1]);
                                                         if JsToken[1].SelectToken('tax_lines',JsToken[2]) then
                                                         begin
@@ -2318,11 +2342,11 @@ codeunit 80000 "PC Shopify Routines"
                                                                 Jstoken[2].AsArray().get(0,Jstoken[1]);
                                                                 if jstoken[1].SelectToken('price',JsToken[2]) then
                                                                     if not Jstoken[2].AsValue().IsNull then
-                                                                        Ordline."Tax Amount" := jstoken[2].AsValue().AsDecimal();
+                                                                        Ordline[1]."Tax Amount" := jstoken[2].AsValue().AsDecimal();
                                                             end;    
                                                         end;
                                                         JsArry[2].get(j,JsToken[1]);
-                                                        Clear(OrdLine."Auto Delivered");
+                                                        Clear(OrdLine[1]."Auto Delivered");
                                                         if JsToken[1].SelectToken('properties',JsToken[2]) then
                                                         begin
                                                             If JsToken[2].AsArray().Count > 0 then
@@ -2336,26 +2360,26 @@ codeunit 80000 "PC Shopify Routines"
                                                                             If JsToken[2].AsValue().AsText() = '_subscription_line_item' then
                                                                                 If JsToken[1].SelectToken('value',JsToken[2]) then
                                                                                     if not Jstoken[2].AsValue().IsNull then
-                                                                                        If Evaluate(OrdLine."Auto Delivered",JsToken[2].AsValue().Astext) then             
+                                                                                        If Evaluate(OrdLine[1]."Auto Delivered",JsToken[2].AsValue().Astext) then             
                                                                                             break;
                                                                 end;    
                                                             end;
                                                         end;
-                                                        Ordline."Base Amount" := Ordline."Order Qty" * Ordline."Unit Price";
-                                                        If Item.Get(Ordline."Item No.") then
-                                                            Ordline.modify(false)
-                                                        else OrdLine.Delete();
+                                                        Ordline[1]."Base Amount" := Ordline[1]."Order Qty" * Ordline[1]."Unit Price";
+                                                        If Item.Get(Ordline[1]."Item No.") then
+                                                            Ordline[1].modify(false)
+                                                        else OrdLine[1].Delete();
                                                     end
-                                                        else OrdLine.Delete();
+                                                        else OrdLine[1].Delete();
                                                 end
                                                 else
-                                                    OrdLine.delete();    
+                                                    OrdLine[1].delete();    
                                             end    
                                             else
-                                                OrdLine.delete;
+                                                OrdLine[1].delete;
                                         end
                                         else
-                                            OrdLine.delete;
+                                            OrdLine[1].delete;
                                     end;  
                                 end; 
                             end
@@ -2364,13 +2388,26 @@ codeunit 80000 "PC Shopify Routines"
                                 Win.Update(2,'');
                                 Win.update(3,'');
                             end;
-                            OrdLine.reset;
-                            OrdLine.Setrange(ShopifyID,OrdHdr.ID);
-                            If Not OrdLine.FindSet() then
+                            OrdLine[1].reset;
+                            OrdLine[1].Setrange(ShopifyID,OrdHdr[1].ID);
+                            If Not OrdLine[1].FindSet() then
                             begin
-                                OrdHdr.Delete(True);
+                                OrdHdr[1].Delete(True);
                                 RecCnt -=1;
-                            end;    
+                            end
+                            else if OrdHdr[1]."Order Type" = OrdHdr[1]."Order Type"::Cancelled then 
+                            begin
+                                OrdHdr[2].Copy(OrdHdr[1]);
+                                OrdHdr[2]."Order Type" := OrdHdr[2]."Order Type"::CreditMemo;
+                                Clear(OrdHdr[2].ID);
+                                OrdHdr[2].insert(true);
+                                repeat    
+                                    OrdLine[2].copy(OrdLine[1]);
+                                    OrdLine[2].ShopifyID := OrdHdr[2].ID;
+                                    Clear(OrdLine[2].ID);
+                                    OrdLine[2].Insert();
+                                until OrdLine[1].next = 0;    
+                            end;
                     end
                     else if GuiAllowed then
                     begin 
@@ -2386,10 +2423,10 @@ codeunit 80000 "PC Shopify Routines"
                 Clear(RecCnt);
                 Commit;
             end;
-        until cnt <=0; 
+       until Cnt <=0; 
         Commit;
         //do every 7 days 
-        If Date2DWY(today,1) = 7 then Process_Refunds();    
+        If Date2DWY(today,1) = 7 then Process_Refunds(0);    
         If Not Dimval.Get('REFUNDS','UNSPECIFIED') then
         begin
             Dimval.init;
@@ -2401,28 +2438,28 @@ codeunit 80000 "PC Shopify Routines"
         end;
         Clear(Parms);
         Parms.Add('fields','note');
-        OrdHdr.Reset;
-        OrdHdr.Setrange(OrdHdr."Order Type",OrdHdr."Order Type"::CreditMemo);
-        OrdHdr.Setrange("Order Status",OrdHdr."Order Status"::Open);
-        if OrdHdr.Findset then
+        OrdHdr[1].Reset;
+        OrdHdr[1].Setrange(OrdHdr[1]."Order Type",OrdHdr[1]."Order Type"::CreditMemo);
+        OrdHdr[1].Setrange("Order Status",OrdHdr[1]."Order Status"::Open);
+        if OrdHdr[1].Findset then
         repeat
-            OrdLine.reset;
-            OrdLine.Setrange(ShopifyID,OrdHdr.ID);
-            If OrdLine.findset then
+            OrdLine[1].reset;
+            OrdLine[1].Setrange(ShopifyID,OrdHdr[1].ID);
+            If OrdLine[1].findset then
             begin
                 Clear(PayLoad);
-                if Shopify_Data(Paction::GET,ShopifyBase + 'orders/' + Format(OrdHdr."Shopify Order ID") +'/refunds.json'
+                if Shopify_Data(Paction::GET,ShopifyBase + 'orders/' + Format(OrdHdr[1]."Shopify Order ID") +'/refunds.json'
                                 ,Parms,PayLoad,Data) then
                 begin                
                     Data.Get('refunds',JsToken[1]);
                     if Not JsToken[1].AsArray().get(0,JsToken[2]) then
-                        OrdLine.modifyall("Reason Code",'UNSPECIFIED')
+                        OrdLine[1].modifyall("Reason Code",'UNSPECIFIED')
                     else
                     begin    
                         JsToken[2].AsObject().SelectToken('note',JsToken[1]);
                         If Jstoken[1].AsValue().IsNull then
                         begin
-                            OrdLine.modifyall("Reason Code",'UNSPECIFIED');
+                            OrdLine[1].modifyall("Reason Code",'UNSPECIFIED');
                         end    
                         else
                         begin 
@@ -2434,19 +2471,19 @@ codeunit 80000 "PC Shopify Routines"
                                 repeat
                                     TstVal := DimVal.Code;
                                     Flg := Tstval.Contains(CopyStr(JsToken[1].AsValue().AsText().ToUpper(),1,20));
-                                    If Flg Then OrdLine.modifyall("Reason Code",Dimval.Code);
+                                    If Flg Then OrdLine[1].modifyall("Reason Code",Dimval.Code);
                                 until (Dimval .next = 0) Or Flg;
                             end 
                             else
                                 Clear(Flg);         
-                            If Not Flg then OrdLine.modifyall("Reason Code",'UNSPECIFIED');
+                            If Not Flg then OrdLine[1].modifyall("Reason Code",'UNSPECIFIED');
                         end
                     end    
                 end     
                 else
-                    OrdLine.modifyall("Reason Code",'UNSPECIFIED');
+                    OrdLine[1].modifyall("Reason Code",'UNSPECIFIED');
             end;        
-        Until OrdHdr.next = 0;
+        Until OrdHdr[1].next = 0;
         if GuiAllowed then win.Close;
         exit(true);
     end;
@@ -2670,13 +2707,13 @@ codeunit 80000 "PC Shopify Routines"
             end;
         end;
     end;                            
-    procedure Process_Refunds()
+    procedure Process_Refunds(RefundID:BigInteger)
     var
         OrdHdr:array[2] of record "PC Shopify Order Header";
         OrdLine:record "PC Shopify Order Lines";
         indx:BigInteger;
         JsArry:array[2] of JsonArray;
-         Parms:Dictionary of [text,text];
+        Parms:Dictionary of [text,text];
         Data:JsonObject;
         PayLoad:text;
         JsToken:array[3] of JsonToken;
@@ -2690,6 +2727,7 @@ codeunit 80000 "PC Shopify Routines"
         OrdExist:Boolean;
         RefQty:Decimal;
         OrigQty:Decimal;
+        Setup:record "Sales & Receivables Setup";
     begin
         if Not Item.Get('NON_REFUND_ITEM') then
         begin
@@ -2715,6 +2753,12 @@ codeunit 80000 "PC Shopify Routines"
         end;
         if GuiAllowed then win.Open('Retrieving Order No    #1###########\'
                                    +'Processing Order No    #2###########');
+        Setup.get;
+        If Setup."Refund Order Lookback Period" = 0 then
+        begin
+            Setup."Refund Order Lookback Period" := 2;
+            Setup.modify(False);
+        end;
         Clear(PayLoad);
         Clear(Parms);
         Clear(RecCnt);
@@ -2724,240 +2768,246 @@ codeunit 80000 "PC Shopify Routines"
         OrdHdr[1].Setrange("Order Status",OrdHdr[1]."Order Status"::Closed);
         OrdHdr[1].SetFilter("BC Reference No.",'<>%1','');
         OrdHdr[1].Setrange("Order Type",OrdHdr[1]."Order Type"::Invoice);
+        If RefundID <> 0 then 
+            OrdHdr[1].Setrange("Shopify Order No.",RefundID)
+        else
+            OrdHdr[1].SetFilter("Shopify Order Date",'<=%1',CalcDate('-' + Format(Setup."Refund Order Lookback Period") + 'W',Today));    
         OrdHdr[1].Setrange("Refunds Checked",False);
-        OrdHdr[1].SetFilter("Shopify Order Date",'<=%1',CalcDate('-1W',Today));    
-        If OrdHdr[1].Findset then
-        repeat
-            if GuiAllowed then 
-            begin 
-                Win.Update(1,OrdHdr[1]."Shopify Order No.");
-                Win.Update(2,'');
-            end;    
-            if Shopify_Data(Paction::GET,ShopifyBase + 'orders/' + Format(OrdHdr[1]."Shopify Order ID") + '.json'
-                                            ,Parms,PayLoad,Data) then
-            Begin
-                Clear(OrdExist);
-                Data.Get('order',JsToken[1]);
-                If JsToken[1].SelectToken('refunds',JsToken[2]) then
+        If OrdHdr[1].FindSet() then
+            repeat
+                if GuiAllowed then 
+                begin 
+                    Win.Update(1,OrdHdr[1]."Shopify Order No.");
+                    Win.Update(2,'');
+                end;    
+                if Shopify_Data(Paction::GET,ShopifyBase + 'orders/' + Format(OrdHdr[1]."Shopify Order ID") + '.json'
+                                                ,Parms,PayLoad,Data) then
                 Begin
-                    JsArry[1] := JsToken[2].AsArray();
-                    For i := 0 to JsArry[1].Count - 1 do
-                    begin
-                        JsArry[1].get(i,JsToken[1]);
-                        Clear(TransAmount);
-                        JsToken[1].SelectToken('transactions',JsToken[2]);
-                        JsArry[2] := JsToken[2].AsArray();
-                        if JsArry[2].Count > 0  then
+                    Clear(OrdExist);
+                    Data.Get('order',JsToken[1]);
+                    If JsToken[1].SelectToken('refunds',JsToken[2]) then
+                    Begin
+                        JsArry[1] := JsToken[2].AsArray();
+                        For i := 0 to JsArry[1].Count - 1 do
                         begin
-                            JsArry[2].get(0,JsToken[1]);
-                            if JsToken[1].SelectToken('amount',Jstoken[2]) then
-                                If not Jstoken[2].AsValue().IsNull then
-                                    TransAmount[1] := Jstoken[2].AsValue().AsDecimal();
-                        end;
-                        TransAmount[2] := TransAmount[1];
-                        JsArry[1].get(i,JsToken[1]);
-                        If i = 0 then
-                        begin
-                            if JsToken[1].SelectToken('order_id',JsToken[2]) then
-                                if not JsToken[2].AsValue().IsNull then
-                                    indx := JsToken[2].AsValue().AsBigInteger();
-                            OrdHdr[2].Reset;
-                            OrdHdr[2].Setrange("Order Type",OrdHdr[2]."Order Type"::CreditMemo);
-                            OrdHdr[2].Setrange("Shopify Order ID",indx);
-                            OrdExist := Not OrdHdr[2].Findset;
-                            If OrdExist then
+                            JsArry[1].get(i,JsToken[1]);
+                            Clear(TransAmount);
+                            JsToken[1].SelectToken('transactions',JsToken[2]);
+                            JsArry[2] := JsToken[2].AsArray();
+                            if JsArry[2].Count > 0  then
                             begin
-                                if GuiAllowed then Win.Update(2,OrdHdr[1]."Shopify Order No.");
-                                OrdHdr[2].init;
-                                Clear(OrdHdr[2].ID);
-                                OrdHdr[2].insert(True);
-                                OrdHdr[2]."Shopify Order Status" := 'FULFILLED';
-                                OrdHdr[2]."Order Type" := OrdHdr[2]."Order Type"::CreditMemo;
-                                OrdHdr[2]."Shopify Order ID" := indx;
-                                OrdHdr[2]."Shopify Order No." := OrdHdr[1]."Shopify Order No.";
-                                OrdHdr[2]."Transaction Type" := 'refund';
-                                OrdHdr[2]."Shopify Financial Status" := 'REFUNDED';
-                                if Jstoken[1].SelectToken('processed_at',Jstoken[2]) then
-                                begin
-                                    Dat:= Copystr(Jstoken[2].AsValue().astext,1,10);
-                                    If Evaluate(OrdHdr[2]."Shopify Order Date",Copystr(Dat,9,2) + '/' + Copystr(Dat,6,2) + '/' + Copystr(Dat,1,4)) then;
-                                end;
-                                OrdHdr[2]."Shopify Order Currency" := OrdHdr[1]."Shopify Order Currency";
-                                JsToken[1].SelectToken('transactions',JsToken[2]);
-                                JsArry[2] := JsToken[2].AsArray();
-                                If JsArry[2].Count > 0  then
-                                begin
-                                    JsArry[2].get(0,JsToken[1]);
-                                    if JsToken[1].SelectToken('gateway',Jstoken[2]) then
-                                        If not Jstoken[2].AsValue().IsNull then
-                                            OrdHdr[2]."Payment Gate Way" := CopyStr(JsToken[2].AsValue().AsText(),1,25);
-                                    if JsToken[1].SelectToken('processed_at',JsToken[2]) then
-                                        If not Jstoken[2].AsValue().IsNull then
-                                            If Evaluate(OrdHdr[2]."Processed Date",CopyStr(JsToken[2].AsValue().AsText(),9,2) + '/' + 
-                                                                CopyStr(JsToken[2].AsValue().AsText(),6,2) + '/' +
-                                                                CopyStr(JsToken[2].AsValue().AsText(),1,4) + '/' ) then
-                                            begin                
-                                                OrdHdr[2]."Processed Time" := CopyStr(JsToken[2].AsValue().AsText(),12,8);
-                                                if not Evaluate(OrdHdr[2]."Proc Time",OrdHdr[2]."Processed Time") then
-                                                    OrdHdr[2]."Proc Time" := 0T;
-                                            end; 
-                                    if JsToken[1].SelectToken('source_name',JsToken[2]) then
-                                        If not Jstoken[2].AsValue().IsNull then
-                                            OrdHdr[2]."Reference No" := CopyStr(JsToken[2].AsValue().AsText(),1,25);    
-                                    if JsToken[1].SelectToken('receipt',JsToken[2]) then
-                                    begin
-                                        If JsToken[2].SelectToken('transaction_id',JsToken[3]) then
-                                        begin
-                                            If not Jstoken[3].AsValue().IsNull then
-                                                OrdHdr[2]."Reference No" := CopyStr(JsToken[3].AsValue().AsText(),1,25)
-                                        end        
-                                        else if JsToken[2].SelectToken('payment_id',JsToken[3]) then
-                                        begin
-                                            If not Jstoken[3].AsValue().IsNull then
-                                                OrdHdr[2]."Reference No" := CopyStr(JsToken[3].AsValue().AsText(),1,25)
-                                        end        
-                                        else if JsToken[2].SelectToken('x_reference',JsToken[3]) then
-                                        begin
-                                            If not Jstoken[3].AsValue().IsNull then
-                                                OrdHdr[2]."Reference No" := CopyStr(JsToken[3].AsValue().AsText(),1,25)
-                                        end
-                                        else if JsToken[2].SelectToken('token',JsToken[3]) then
-                                        begin
-                                            If not Jstoken[3].AsValue().IsNull then
-                                                OrdHdr[2]."Reference No" := CopyStr(JsToken[3].AsValue().AsText(),1,25)
-                                        end
-                                        else if JsToken[2].SelectToken('gift_card_id',JsToken[3]) then
-                                        begin
-                                            If not Jstoken[3].AsValue().IsNull then
-                                            begin
-                                                OrdHdr[2]."Reference No" := CopyStr(JsToken[3].AsValue().AsText(),1,25);
-                                                If JsToken[1].SelectToken('amount',JsToken[3]) then
-                                                    If not Jstoken[3].AsValue().IsNull then
-                                                        Ordhdr[2]."Gift Card Total" := JsToken[3].AsValue().AsDecimal();
-                                            end;
-                                        end;
-                                    end;                    
-                                end;
-                                If OrdHdr[2]."Reference No" = '' then
-                                begin
-                                    Clear(Data);
-                                    Clear(Parms);
-                                    Parms.Add('fields','note,source_name');
-                                    if Shopify_Data(Paction::GET,ShopifyBase + 'orders/' + Format(OrdHdr[2]."Shopify Order ID") + '.json'
-                                                            ,Parms,PayLoad,Data) then
-                                    begin
-                                        If Data.Get('order',JsToken[1]) then
-                                        begin
-                                            If JsToken[1].SelectToken('source_name',JsToken[2]) then
-                                                If not Jstoken[2].AsValue().IsNull then
-                                                    If JsToken[2].AsValue().AsText().ToUpper().Contains('MARKET') then
-                                                    begin
-                                                        If JsToken[1].SelectToken('note',JsToken[2]) then
-                                                            If not Jstoken[2].AsValue().IsNull then
-                                                            begin
-                                                                OrdHdr[2]."Reference No" := CopyStr(Extract_MarketPlace_Invoice_Number(JsToken[2].AsValue().AsText()),1,25);
-                                                                OrdHdr[2]."Payment Gate Way" := 'market_place';
-                                                            end;
-                                                    end 
-                                                    else
-                                                        OrdHdr[2]."Reference No" := CopyStr(JsToken[2].AsValue().AsText(),1,25);            
-                                        end;
-                                    end; 
-                                end;
-                                RecCnt += 1;
-                                Ordhdr[2].Modify(False);
+                                JsArry[2].get(0,JsToken[1]);
+                                if JsToken[1].SelectToken('amount',Jstoken[2]) then
+                                    If not Jstoken[2].AsValue().IsNull then
+                                        TransAmount[1] := Jstoken[2].AsValue().AsDecimal();
                             end;
-                        end;
-                        If OrdExist then
-                        begin        
-                            JsArry[1].Get(i,JsToken[2]);
-                            JsToken[2].SelectToken('refund_line_items',JsToken[1]);
-                            Jsarry[2] := JsToken[1].AsArray();
-                            If JsArry[2].Count > 0 then Clear(TransAmount[1]);
-                            For j := 0 to JsArry[2].Count - 1 do
+                            TransAmount[2] := TransAmount[1];
+                            JsArry[1].get(i,JsToken[1]);
+                            If i = 0 then
                             begin
-                                JsArry[2].get(j,JsToken[2]);
-                                Clear(RefQty);
-                                if JsToken[2].Asobject.AsToken.SelectToken('quantity',JsToken[1]) then
-                                    if not Jstoken[1].AsValue().IsNull then
-                                        RefQty :=  jstoken[1].AsValue().AsDecimal();
-                                If JsToken[2].SelectToken('line_item',Jstoken[1]) then
+                                if JsToken[1].SelectToken('order_id',JsToken[2]) then
+                                    if not JsToken[2].AsValue().IsNull then
+                                        indx := JsToken[2].AsValue().AsBigInteger();
+                                OrdHdr[2].Reset;
+                                OrdHdr[2].Setrange("Order Type",OrdHdr[2]."Order Type"::CreditMemo);
+                                OrdHdr[2].Setrange("Shopify Order ID",indx);
+                                OrdExist := Not OrdHdr[2].Findset;
+                                If OrdExist then
                                 begin
-                                    OrdLine.init;
-                                    Clear(OrdLine.ID);
-                                    Ordline.insert;
-                                    Ordline."Shopify Order ID" := OrdHdr[2]."Shopify Order ID";
-                                    OrdLine.ShopifyID := Ordhdr[2].ID;
-                                    Ordline."Order Line No" := (j + 1) * 10;
-                                    if JsToken[1].Asobject.AsToken.SelectToken('id',JsToken[2]) Then
+                                    if GuiAllowed then Win.Update(2,OrdHdr[1]."Shopify Order No.");
+                                    OrdHdr[2].init;
+                                    Clear(OrdHdr[2].ID);
+                                    OrdHdr[2].insert(True);
+                                    OrdHdr[2]."Shopify Order Status" := 'FULFILLED';
+                                    OrdHdr[2]."Order Type" := OrdHdr[2]."Order Type"::CreditMemo;
+                                    OrdHdr[2]."Shopify Order ID" := indx;
+                                    OrdHdr[2]."Shopify Order No." := OrdHdr[1]."Shopify Order No.";
+                                    OrdHdr[2]."Transaction Type" := 'refund';
+                                    OrdHdr[2]."Shopify Financial Status" := 'REFUNDED';
+                                    if Jstoken[1].SelectToken('processed_at',Jstoken[2]) then
                                     begin
-                                        if not Jstoken[2].AsValue().IsNull then
-                                        Begin    
-                                            OrdLine."Order Line ID" := JsToken[2].AsValue().AsBigInteger();
-                                            If JsToken[1].Asobject.AsToken.SelectToken('sku',JsToken[2]) then
+                                        Dat:= Copystr(Jstoken[2].AsValue().astext,1,10);
+                                        If Evaluate(OrdHdr[2]."Shopify Order Date",Copystr(Dat,9,2) + '/' + Copystr(Dat,6,2) + '/' + Copystr(Dat,1,4)) then;
+                                    end;
+                                    OrdHdr[2]."Shopify Order Currency" := OrdHdr[1]."Shopify Order Currency";
+                                    JsToken[1].SelectToken('transactions',JsToken[2]);
+                                    JsArry[2] := JsToken[2].AsArray();
+                                    If JsArry[2].Count > 0  then
+                                    begin
+                                        JsArry[2].get(0,JsToken[1]);
+                                        if JsToken[1].SelectToken('gateway',Jstoken[2]) then
+                                            If not Jstoken[2].AsValue().IsNull then
+                                                OrdHdr[2]."Payment Gate Way" := CopyStr(JsToken[2].AsValue().AsText(),1,25);
+                                        if JsToken[1].SelectToken('processed_at',JsToken[2]) then
+                                            If not Jstoken[2].AsValue().IsNull then
+                                                If Evaluate(OrdHdr[2]."Processed Date",CopyStr(JsToken[2].AsValue().AsText(),9,2) + '/' + 
+                                                                    CopyStr(JsToken[2].AsValue().AsText(),6,2) + '/' +
+                                                                    CopyStr(JsToken[2].AsValue().AsText(),1,4) + '/' ) then
+                                                begin                
+                                                    OrdHdr[2]."Processed Time" := CopyStr(JsToken[2].AsValue().AsText(),12,8);
+                                                    if not Evaluate(OrdHdr[2]."Proc Time",OrdHdr[2]."Processed Time") then
+                                                        OrdHdr[2]."Proc Time" := 0T;
+                                                end; 
+                                        if JsToken[1].SelectToken('source_name',JsToken[2]) then
+                                            If not Jstoken[2].AsValue().IsNull then
+                                                OrdHdr[2]."Reference No" := CopyStr(JsToken[2].AsValue().AsText(),1,25);    
+                                        if JsToken[1].SelectToken('receipt',JsToken[2]) then
+                                        begin
+                                            If JsToken[2].SelectToken('transaction_id',JsToken[3]) then
                                             begin
-                                                If Not JsToken[2].AsValue().IsNull then
+                                                If not Jstoken[3].AsValue().IsNull then
+                                                    OrdHdr[2]."Reference No" := CopyStr(JsToken[3].AsValue().AsText(),1,25)
+                                            end        
+                                            else if JsToken[2].SelectToken('payment_id',JsToken[3]) then
+                                            begin
+                                                If not Jstoken[3].AsValue().IsNull then
+                                                    OrdHdr[2]."Reference No" := CopyStr(JsToken[3].AsValue().AsText(),1,25)
+                                            end        
+                                            else if JsToken[2].SelectToken('x_reference',JsToken[3]) then
+                                            begin
+                                                If not Jstoken[3].AsValue().IsNull then
+                                                    OrdHdr[2]."Reference No" := CopyStr(JsToken[3].AsValue().AsText(),1,25)
+                                            end
+                                            else if JsToken[2].SelectToken('token',JsToken[3]) then
+                                            begin
+                                                If not Jstoken[3].AsValue().IsNull then
+                                                    OrdHdr[2]."Reference No" := CopyStr(JsToken[3].AsValue().AsText(),1,25)
+                                            end
+                                            else if JsToken[2].SelectToken('gift_card_id',JsToken[3]) then
+                                            begin
+                                                If not Jstoken[3].AsValue().IsNull then
                                                 begin
-                                                    Ordline."Item No." := jstoken[2].AsValue().AsCode();
-                                                    OrdLine."Order Qty" := RefQty;
-                                                    If JsToken[1].Asobject.AsToken.SelectToken('gift_card',JsToken[2]) then
-                                                        if not Jstoken[2].AsValue().IsNull then
-                                                            if JsToken[2].AsValue().AsBoolean() then
-                                                                Ordline."Item No." := 'GIFT_CARD';
-                                                    OrdLine."Location Code" := 'QC';
-                                                    OrdLine."FulFilo Shipment Qty" := OrdLine."Order Qty";
-                                                    Clear(OrigQty);            
-                                                    if JsToken[1].Asobject.AsToken.SelectToken('quantity',JsToken[2]) then
-                                                        if not Jstoken[2].AsValue().IsNull then
-                                                            OrigQty := jstoken[2].AsValue().AsDecimal();
-                                                    if JsToken[1].Asobject.AsToken.SelectToken('price',JsToken[2]) then
-                                                        if not Jstoken[2].AsValue().IsNull then
-                                                            Ordline."Unit Price" :=  jstoken[2].AsValue().AsDecimal();
-                                                    if JsToken[1].Asobject.AsToken.SelectToken('total_discount',JsToken[2]) then
-                                                        if not Jstoken[2].AsValue().IsNull then
-                                                            Ordline."Discount Amount" := jstoken[2].AsValue().AsDecimal();
-                                                    Ordline."Shopify Application Index" := -1;
-                                                    if JsToken[1].Asobject.AsToken.SelectToken('discount_allocations',JsToken[2]) then
-                                                    begin
-                                                        If JsToken[2].AsArray().Count > 0 then
+                                                    OrdHdr[2]."Reference No" := CopyStr(JsToken[3].AsValue().AsText(),1,25);
+                                                    If JsToken[1].SelectToken('amount',JsToken[3]) then
+                                                        If not Jstoken[3].AsValue().IsNull then
+                                                            Ordhdr[2]."Gift Card Total" := JsToken[3].AsValue().AsDecimal();
+                                                end;
+                                            end;
+                                        end;                    
+                                    end;
+                                    If OrdHdr[2]."Reference No" = '' then
+                                    begin
+                                        Clear(Data);
+                                        Clear(Parms);
+                                        Parms.Add('fields','note,source_name');
+                                        if Shopify_Data(Paction::GET,ShopifyBase + 'orders/' + Format(OrdHdr[2]."Shopify Order ID") + '.json'
+                                                                ,Parms,PayLoad,Data) then
+                                        begin
+                                            If Data.Get('order',JsToken[1]) then
+                                            begin
+                                                If JsToken[1].SelectToken('source_name',JsToken[2]) then
+                                                    If not Jstoken[2].AsValue().IsNull then
+                                                        If JsToken[2].AsValue().AsText().ToUpper().Contains('MARKET') then
                                                         begin
-                                                            Jstoken[2].AsArray().get(0,Jstoken[3]);
-                                                            if jstoken[3].SelectToken('discount_application_index',JsToken[2]) then
-                                                                if not Jstoken[2].AsValue().IsNull then
-                                                                    Ordline."Shopify Application Index" := JsToken[2].AsValue().AsInteger();
-                                                            if jstoken[3].SelectToken('amount',JsToken[2]) then
-                                                                if not Jstoken[2].AsValue().IsNull then
-                                                                    Ordline."Discount Amount" := jstoken[2].AsValue().AsDecimal(); 
-                                                        end;    
-                                                    end;
-                                                    If OrigQty > 0 then
+                                                            If JsToken[1].SelectToken('note',JsToken[2]) then
+                                                                If not Jstoken[2].AsValue().IsNull then
+                                                                begin
+                                                                    OrdHdr[2]."Reference No" := CopyStr(Extract_MarketPlace_Invoice_Number(JsToken[2].AsValue().AsText()),1,25);
+                                                                    OrdHdr[2]."Payment Gate Way" := 'market_place';
+                                                                end;
+                                                        end 
+                                                        else
+                                                            OrdHdr[2]."Reference No" := CopyStr(JsToken[2].AsValue().AsText(),1,25);            
+                                            end;
+                                        end; 
+                                    end;
+                                    RecCnt += 1;
+                                    Ordhdr[2].Modify(False);
+                                end;
+                            end;
+                            If OrdExist then
+                            begin        
+                                JsArry[1].Get(i,JsToken[2]);
+                                JsToken[2].SelectToken('refund_line_items',JsToken[1]);
+                                Jsarry[2] := JsToken[1].AsArray();
+                                If JsArry[2].Count > 0 then Clear(TransAmount[1]);
+                                For j := 0 to JsArry[2].Count - 1 do
+                                begin
+                                    JsArry[2].get(j,JsToken[2]);
+                                    Clear(RefQty);
+                                    if JsToken[2].Asobject.AsToken.SelectToken('quantity',JsToken[1]) then
+                                        if not Jstoken[1].AsValue().IsNull then
+                                            RefQty :=  jstoken[1].AsValue().AsDecimal();
+                                    If JsToken[2].SelectToken('line_item',Jstoken[1]) then
+                                    begin
+                                        OrdLine.init;
+                                        Clear(OrdLine.ID);
+                                        Ordline.insert;
+                                        Ordline."Shopify Order ID" := OrdHdr[2]."Shopify Order ID";
+                                        OrdLine.ShopifyID := Ordhdr[2].ID;
+                                        Ordline."Order Line No" := (j + 1) * 10;
+                                        if JsToken[1].Asobject.AsToken.SelectToken('id',JsToken[2]) Then
+                                        begin
+                                            if not Jstoken[2].AsValue().IsNull then
+                                            Begin    
+                                                OrdLine."Order Line ID" := JsToken[2].AsValue().AsBigInteger();
+                                                If JsToken[1].Asobject.AsToken.SelectToken('sku',JsToken[2]) then
+                                                begin
+                                                    If Not JsToken[2].AsValue().IsNull then
                                                     begin
-                                                        If Ordline."Discount Amount" > 0 then
-                                                            Ordline."Discount Amount" := (Ordline."Discount Amount" * OrdLine."Order Qty")/OrigQty;  
-                                                        Clear(Ordline."Tax Amount");
-                                                        If JsToken[1].Asobject.AsToken.SelectToken('tax_lines',JsToken[2]) then
+                                                        Ordline."Item No." := jstoken[2].AsValue().AsCode();
+                                                        OrdLine."Order Qty" := RefQty;
+                                                        If JsToken[1].Asobject.AsToken.SelectToken('gift_card',JsToken[2]) then
+                                                            if not Jstoken[2].AsValue().IsNull then
+                                                                if JsToken[2].AsValue().AsBoolean() then
+                                                                    Ordline."Item No." := 'GIFT_CARD';
+                                                        OrdLine."Location Code" := 'QC';
+                                                        OrdLine."FulFilo Shipment Qty" := OrdLine."Order Qty";
+                                                        Clear(OrigQty);            
+                                                        if JsToken[1].Asobject.AsToken.SelectToken('quantity',JsToken[2]) then
+                                                            if not Jstoken[2].AsValue().IsNull then
+                                                                OrigQty := jstoken[2].AsValue().AsDecimal();
+                                                        if JsToken[1].Asobject.AsToken.SelectToken('price',JsToken[2]) then
+                                                            if not Jstoken[2].AsValue().IsNull then
+                                                                Ordline."Unit Price" :=  jstoken[2].AsValue().AsDecimal();
+                                                        if JsToken[1].Asobject.AsToken.SelectToken('total_discount',JsToken[2]) then
+                                                            if not Jstoken[2].AsValue().IsNull then
+                                                                Ordline."Discount Amount" := jstoken[2].AsValue().AsDecimal();
+                                                        Ordline."Shopify Application Index" := -1;
+                                                        if JsToken[1].Asobject.AsToken.SelectToken('discount_allocations',JsToken[2]) then
                                                         begin
                                                             If JsToken[2].AsArray().Count > 0 then
                                                             begin
                                                                 Jstoken[2].AsArray().get(0,Jstoken[3]);
-                                                                if jstoken[3].SelectToken('price',JsToken[2]) then
+                                                                if jstoken[3].SelectToken('discount_application_index',JsToken[2]) then
                                                                     if not Jstoken[2].AsValue().IsNull then
-                                                                        Ordline."Tax Amount" := jstoken[2].AsValue().AsDecimal();
+                                                                        Ordline."Shopify Application Index" := JsToken[2].AsValue().AsInteger();
+                                                                if jstoken[3].SelectToken('amount',JsToken[2]) then
+                                                                    if not Jstoken[2].AsValue().IsNull then
+                                                                        Ordline."Discount Amount" := jstoken[2].AsValue().AsDecimal(); 
                                                             end;    
                                                         end;
-                                                        If Ordline."Tax Amount" > 0 then
-                                                            Ordline."Tax Amount" := (Ordline."Tax Amount" * OrdLine."Order Qty")/OrigQty;  
-                                                        Ordline."Base Amount" := Ordline."Order Qty" * Ordline."Unit Price";
-                                                        If Item.Get(Ordline."Item No.") then
-                                                        Begin
-                                                            OrdLine."Unit Of Measure" := Item."Base Unit of Measure";
-                                                            Ordline.modify(False);
-                                                        end    
+                                                        If OrigQty > 0 then
+                                                        begin
+                                                            If Ordline."Discount Amount" > 0 then
+                                                                Ordline."Discount Amount" := (Ordline."Discount Amount" * OrdLine."Order Qty")/OrigQty;  
+                                                            Clear(Ordline."Tax Amount");
+                                                            If JsToken[1].Asobject.AsToken.SelectToken('tax_lines',JsToken[2]) then
+                                                            begin
+                                                                If JsToken[2].AsArray().Count > 0 then
+                                                                begin
+                                                                    Jstoken[2].AsArray().get(0,Jstoken[3]);
+                                                                    if jstoken[3].SelectToken('price',JsToken[2]) then
+                                                                        if not Jstoken[2].AsValue().IsNull then
+                                                                            Ordline."Tax Amount" := jstoken[2].AsValue().AsDecimal();
+                                                                end;    
+                                                            end;
+                                                            If Ordline."Tax Amount" > 0 then
+                                                                Ordline."Tax Amount" := (Ordline."Tax Amount" * OrdLine."Order Qty")/OrigQty;  
+                                                            Ordline."Base Amount" := Ordline."Order Qty" * Ordline."Unit Price";
+                                                            If Item.Get(Ordline."Item No.") then
+                                                            Begin
+                                                                OrdLine."Unit Of Measure" := Item."Base Unit of Measure";
+                                                                Ordline.modify(False);
+                                                            end    
+                                                            else
+                                                                OrdLine.Delete();
+                                                        end
                                                         else
-                                                            OrdLine.Delete();
+                                                            OrdLine.delete;            
                                                     end
                                                     else
-                                                        OrdLine.delete;            
+                                                        OrdLine.Delete();
                                                 end
                                                 else
                                                     OrdLine.Delete();
@@ -2967,70 +3017,67 @@ codeunit 80000 "PC Shopify Routines"
                                         end
                                         else
                                             OrdLine.Delete();
-                                    end
-                                    else
-                                        OrdLine.Delete();
+                                    end;
                                 end;
+                                //see if this is a refund with no items involved
+                                If TransAmount[1] > 0 then
+                                begin
+                                    OrdLine.reset;
+                                    OrdLine.Setrange(ShopifyID,OrdHdr[2].ID);
+                                    j:= 10;
+                                    If OrdLine.findlast then j += OrdLine."Order Line No"; 
+                                    OrdLine.init;
+                                    Clear(OrdLine.ID);
+                                    Ordline.insert;
+                                    Ordline."Shopify Order ID" := OrdHdr[2]."Shopify Order ID";
+                                    OrdLine.ShopifyID := Ordhdr[2].ID;
+                                    Ordline."Order Line No" := j;
+                                    Ordline."Item No." := 'NON_REFUND_ITEM';
+                                    OrdLine."Location Code" := 'QC';
+                                    Item.Get(Ordline."Item No.");
+                                    OrdLine."Unit Of Measure" := Item."Base Unit of Measure";
+                                    OrdLine."Order Qty" := 1;
+                                    OrdLine."Unit Price" := TransAmount[1];
+                                    Ordline."FulFilo Shipment Qty" := 1;
+                                    Ordline."Shopify Application Index" := -1;
+                                    OrdLine."Discount Amount" := 0;
+                                    OrdLine."Tax Amount" := 0;
+                                    Ordline."Base Amount" := Ordline."Order Qty" * Ordline."Unit Price";
+                                    OrdLine.modify(false);
+                                end;    
+                                Commit;
                             end;
-                            //see if this is a refund with no items involved
-                            If TransAmount[1] > 0 then
+                        end;
+                        if OrdExist then
+                        begin        
+                            OrdLine.reset;
+                            OrdLine.Setrange(ShopifyID,OrdHdr[2].ID);
+                            If OrdLine.findset then
                             begin
-                                OrdLine.reset;
-                                OrdLine.Setrange(ShopifyID,OrdHdr[2].ID);
-                                j:= 10;
-                                If OrdLine.findlast then j += OrdLine."Order Line No"; 
-                                OrdLine.init;
-                                Clear(OrdLine.ID);
-                                Ordline.insert;
-                                Ordline."Shopify Order ID" := OrdHdr[2]."Shopify Order ID";
-                                OrdLine.ShopifyID := Ordhdr[2].ID;
-                                Ordline."Order Line No" := j;
-                                Ordline."Item No." := 'NON_REFUND_ITEM';
-                                OrdLine."Location Code" := 'QC';
-                                Item.Get(Ordline."Item No.");
-                                OrdLine."Unit Of Measure" := Item."Base Unit of Measure";
-                                OrdLine."Order Qty" := 1;
-                                OrdLine."Unit Price" := TransAmount[1];
-                                Ordline."FulFilo Shipment Qty" := 1;
-                                Ordline."Shopify Application Index" := -1;
-                                OrdLine."Discount Amount" := 0;
-                                OrdLine."Tax Amount" := 0;
-                                Ordline."Base Amount" := Ordline."Order Qty" * Ordline."Unit Price";
-                                OrdLine.modify(false);
-                            end;    
-                            Commit;
+                                OrdLine.CalcSums("Base Amount","Discount Amount","Tax Amount");
+                                OrdHdr[2]."Tax Total" := OrdLine."Tax Amount";
+                                OrdHdr[2]."Discount Total" := OrdLine."Discount Amount";
+                                OrdHdr[2]."Order Total" := OrdLine."Base Amount" - OrdLine."Discount Amount";
+                                //If TransAmount[2] <> OrdHdr[2]."Order Total" then 
+                                //    OrdHdr[2]."Order Total" := TransAmount[2];    
+                                OrdHdr[2].Modify(False);
+                            end
+                            else
+                            begin
+                                OrdHdr[2].Delete(True);
+                                RecCnt -=1;
+                            end;
                         end;
                     end;
-                    if OrdExist then
-                    begin        
-                        OrdLine.reset;
-                        OrdLine.Setrange(ShopifyID,OrdHdr[2].ID);
-                        If OrdLine.findset then
-                        begin
-                            OrdLine.CalcSums("Base Amount","Discount Amount","Tax Amount");
-                            OrdHdr[2]."Tax Total" := OrdLine."Tax Amount";
-                            OrdHdr[2]."Discount Total" := OrdLine."Discount Amount";
-                            OrdHdr[2]."Order Total" := OrdLine."Base Amount" - OrdLine."Discount Amount";
-                            If TransAmount[2] <> OrdHdr[2]."Order Total" then 
-                                OrdHdr[2]."Order Total" := TransAmount[2];    
-                            OrdHdr[2].Modify(False);
-                        end
-                        else
-                        begin
-                            OrdHdr[2].Delete(True);
-                            RecCnt -=1;
-                        end;
-                    end;
-                end;
-            end;    
-            OrdHdr[1]."Refunds Checked" := True;
-            OrdHdr[1].Modify(false);
-            If RecCnt > 50 then
-            begin
-                Clear(RecCnt);
-                Commit;
-            end;          
-        until OrdHdr[1].next = 0;
+                end;    
+                OrdHdr[1]."Refunds Checked" := True;
+                OrdHdr[1].Modify(false);
+                If RecCnt > 50 then
+                begin
+                    Clear(RecCnt);
+                    Commit;
+                end;          
+            until OrdHdr[1].next = 0;
         if GuiAllowed then Win.Close;
         Commit;
     end;        
@@ -3110,15 +3157,42 @@ codeunit 80000 "PC Shopify Routines"
             Body += 'If you have any questions, please don''t hesitate to contact us.' + CRLF + CRLF;
             Body += 'Thanks,' + CRLF;
             Body += 'Luken' + CRLF + CRLF;
-            Body += 'PetCulture Sales & Operations.' + CRLF + 'www.petculture.com.au'; 
+            Body += 'PetCulture Sales & Operations.' + CRLF + 'www.petculture.com.au';
             Flg := Doc.EmailFileFromStream(InStrm,PurchHdr."No." + '.pdf',Body,Ven.Name + ' - ' + PurchHdr."No." + ' - ' + PurchHdr."Location Code"
-                    ,Ven."Operations E-Mail",True,0);
+                    ,Ven."Operations E-Mail",True,-1);
             If Flg and (Setup."PO CC email Address" <> '') then        
                 Flg := Doc.EmailFileFromStream(InStrm,PurchHdr."No." + '.pdf',Body,Ven.Name + ' - ' + PurchHdr."No." + ' - ' + PurchHdr."Location Code"
-                        ,Setup."PO CC email Address",True,0);
+                        ,Setup."PO CC email Address",True,-1);
             exit(Flg);    
         end;            
         exit(false);
+    end;
+  
+    [EventSubscriber(ObjectType::Codeunit, Codeunit::"Document-Mailing", 'OnBeforeEmailFileInternal', '', true, true)]
+    local procedure "Document-Mailing_OnBeforeEmailFileInternal"
+    (
+        var TempEmailItem: Record "Email Item";
+		var HtmlBodyFilePath: Text[250];
+		var EmailSubject: Text[250];
+		var ToEmailAddress: Text[250];
+		var PostedDocNo: Code[20];
+		var EmailDocName: Text[250];
+		var HideDialog: Boolean;
+		var ReportUsage: Integer;
+		var IsFromPostedDoc: Boolean;
+		var SenderUserID: Code[50];
+		var EmailScenario: Enum "Email Scenario"
+    )
+    var
+        Flds:list of [text]; 
+        PurHdr:record "Purchase Header";
+
+    begin
+        Flds := EmailSubject.Split(' - ');
+        If Flds.Count > 1 then
+            If PurHdr.Get(PurHdr."Document Type"::Order,Flds.Get(2)) then
+                EmailScenario := Enum::"Email Scenario"::"Purchase Order";
+
     end;
     procedure Get_Dim_Set_Id(Member:Code[20];OrdType:Code[20];Item:Code[20]):Integer
     var
@@ -3515,7 +3589,7 @@ codeunit 80000 "PC Shopify Routines"
             If Result then
             begin
                 if GuiAllowed Then Win.Open('Processing Order Data @1@@@@@@@@@@@@@@@@@@@');
-                For Loop := 1 to 2  do
+                For Loop := 1 to 2 do
                 begin 
                     PCOrdHdr[1].reset;
                     PCOrdHdr[1].Setrange("Order Status",PCOrdHdr[1]."Order Status"::Open);
@@ -3523,15 +3597,11 @@ codeunit 80000 "PC Shopify Routines"
                     If OrdNoID <> 0 then PCOrdHdr[1].Setrange(ID,OrdNoID);
                     if Loop = 1 then
                     begin
-                        //PCOrdHdr[1].Setfilter("Shopify Order Member Status",'<>%1','');
                         PCOrdHdr[1].Setrange("Fulfilo Shipment Status",PCOrdHdr[1]."Fulfilo Shipment Status"::Complete);
-                        PCordHdr[1].Setrange("Order Type",PCOrdHdr[1]."Order Type"::Invoice);
+                        PCordHdr[1].Setfilter("Order Type",'%1|%2',PCOrdHdr[1]."Order Type"::Invoice,PCOrdHdr[1]."Order Type"::Cancelled);
                     end    
-                    else
-                    begin
-                        //PCOrdHdr[1].SetRange("Shopify Order Member Status");
+                    else 
                         PCOrdHdr[1].Setrange("Order Type",PCordHdr[1]."Order Type"::CreditMemo);
-                    end;    
                     Clear(ProcCnt);
                     Clear(i);
                     If PCOrdHdr[1].findset then
@@ -3541,7 +3611,7 @@ codeunit 80000 "PC Shopify Routines"
                             Clear(LineNo);
                             Clear(SalesHdr);
                             SalesHdr.init;
-                            if Loop = 1 then
+                            if Loop in [1,3] then
                                 SalesHdr.validate("Document Type",SalesHdr."Document Type"::Invoice)
                             else
                                 SalesHdr.validate("Document Type",SalesHdr."Document Type"::"Credit Memo");
@@ -3612,7 +3682,8 @@ codeunit 80000 "PC Shopify Routines"
                                                                 (PCOrdHdr[1]."Shopify Order Member Status" = 'PLATINUM') OR 
                                                                 (PCOrdLin."Auto Delivered");*/
                                 if loop = 2 then
-                                    SalesLine."Palatability Reason" := PCOrdLin."Reason Code";                              
+                                    SalesLine."Palatability Reason" := PCOrdLin."Reason Code";
+                                Salesline."Shopify Order Date" := PCOrdHdr[1]."Shopify Order Date";
                                 SalesLine.Modify(true);
                             end;
                         Until (PCOrdLin.next = 0) Or Not exFlg;
@@ -3668,6 +3739,7 @@ codeunit 80000 "PC Shopify Routines"
                                 Clear(Salesline."Auto Delivered");
                                 Salesline."Shopify Order ID" := PCordHdr[1]."Shopify Order ID";
                                 Salesline.Validate("Unit Price",PCOrdHdr[1]."Freight Total");
+                                Salesline."Shopify Order Date" := PCOrdHdr[1]."Shopify Order Date";
                                 SalesLine.Modify(true);
                             end;
                             If PCOrdHdr[1]."Gift Card Total" > 0 then
@@ -3689,6 +3761,7 @@ codeunit 80000 "PC Shopify Routines"
                                 Salesline.Validate("Unit Price",-PCOrdHdr[1]."Gift Card Total");
                                 Clear(Salesline."Auto Delivered");
                                 Salesline."Shopify Order ID" := PCordHdr[1]."Shopify Order ID";
+                                Salesline."Shopify Order Date" := PCOrdHdr[1]."Shopify Order Date";
                                 SalesLine.Modify(true);
                             end;
                             //Check that All Order lines are applicable
@@ -3728,6 +3801,7 @@ codeunit 80000 "PC Shopify Routines"
                                             Clear(Salesline."Auto Delivered");
                                             Salesline."Shopify Order ID" := PCordHdr[1]."Shopify Order ID";
                                             Salesline.Validate("Unit Price",Disc);
+                                            Salesline."Shopify Order Date" := PCOrdHdr[1]."Shopify Order Date";
                                             SalesLine.Modify(true);
                                         end;
                                     end;
@@ -3971,681 +4045,5 @@ codeunit 80000 "PC Shopify Routines"
         Pcost[1].Setfilter("End Date",'<>%1&<=%2',0D,Today);
         If Pcost[1].Findset then Pcost[1].DeleteAll(False);
     end;
-    procedure Build_Cash_Receipts(var Buff:record "PC Shopify Order Header";PostDate:date)
-    var
-        GenJrnlBatch:record "Gen. Journal Batch";
-        GenJrnl:Record "Gen. Journal Line";
-        GenTemplate:Record "Gen. Journal Template";
-        NoSeriesMgt:Codeunit NoSeriesManagement;
-        DummyCode:Code[10];
-        GLSetup:Record "General Ledger Setup"; 
-        Lineno:Integer;
-        Sinv:Record "Sales Invoice Header";
-        Scrd:record "Sales Cr.Memo Header";
-        Doc:Code[20];
-        InvTot:Decimal;
-        CrdTot:decimal;
-        GenJtrnTemp:Record "Gen. Journal Template";
-        Cu:Codeunit "Gen. Jnl.-Post";
-        PstDate:date; 
-        TmpBuff:record "PC Shopify Order Header" temporary;
-    begin
-        TmpBuff.Reset();
-        If Tmpbuff.Findset then TmpBuff.DeleteAll();
-        GLSetup.get;
-        If GLSetup."Reconcillation Bank Acc" = '' then
-        begin
-            Message('Reconcilliation Bank acc not defined in General Ledger Setup');
-            exit;
-        end;    
-        If GLSetup."Reconcillation Clearing Acc" = '' then
-        begin
-            Message('Reconcilliation Clearing acc not defined in General Ledger Setup');
-            exit;
-        end; 
-        If Not GenJtrnTemp.Get('CASH RECE') then
-        begin
-            GenJtrnTemp.Init();
-            GenJtrnTemp.Validate(Name,'CASH RECE');
-            GenJtrnTemp.insert;
-            GenJtrnTemp.Description := 'Cash Receipts journal';
-            GenJtrnTemp.validate(Type,GenJtrnTemp.type::"Cash Receipts");
-            GenJtrnTemp.Validate("Bal. Account Type",GenJtrnTemp."Bal. Account Type"::"G/L Account");
-            GenJtrnTemp.Validate("Source Code",'CASHRECJNL');
-            GenJtrnTemp.Validate("Force Doc. Balance",true);
-            GenJtrnTemp.Validate("Copy VAT Setup to Jnl. Lines",true);
-            GenJtrnTemp.validate("Copy to Posted Jnl. Lines",true);
-            GenJtrnTemp.Modify();
-        end;
-        If Not GenJrnlBatch.Get('CASH RECE','DEFAULT') then
-        begin
-            GenJrnlBatch.init;
-            GenJrnlBatch.validate("Journal Template Name",'CASH RECE');
-            GenJrnlBatch.Validate(Name,'DEFAULT');
-            GenJrnlBatch.Insert();
-            GenJrnlBatch.Validate("Bal. Account Type",GenJrnlBatch."Bal. Account Type"::"G/L Account");
-            GenJrnlBatch.Validate("No. Series",'GJNL-RCPT');
-            GenJrnlBatch.modify();
-        end;
-        Clear(PstDate);
-        If (GLSetup."Allow Posting To" <> 0D) AND (GLSetup."Allow Posting To" < Today) then 
-        begin
-            PstDate := GLSetup."Allow Posting To";
-            Clear(GLSetup."Allow Posting To");
-            GLSetup.MOdify(false);       
-        end;
-        Clear(InvTot);
-        Clear(CrdTot);
-        Clear(Lineno);
-        GenJrnl.reset;
-        GenJrnl.Setrange("Journal Template Name",'CASH RECE');
-        GenJrnl.Setrange("Journal Batch Name",'DEFAULT');
-        If GenJrnl.findset then GenJrnl.DeleteAll();
-        Buff.Setrange("Cash Receipt Status",Buff."Cash Receipt Status"::UnApplied);
-        Buff.Setfilter(Buff."Order Total",'>0');
-        If Buff.findset then
-        repeat
-            If Buff."Order Type" = Buff."Order Type"::Invoice then
-                InvTot += Buff."Order Total"
-            else
-                CrdTot -= Buff."Order Total";
-        until Buff.next = 0;
-        if InvTot > 0 then
-        begin
-            GenJrnl.INIT;
-            GenJrnl.VALIDATE("Journal Template Name",'CASH RECE');
-            GenJrnl.VALIDATE("Journal Batch Name",'DEFAULT');
-            GenJrnl."Source Code" := 'CASHRECJNL';
-            LineNo += 10;
-            GenJrnl."Line No." := LineNo;
-            GenJrnl.INSERT(true);
-            GenJrnl.FILTERGROUP(2);
-            GenJrnl.VALIDATE("Posting Date",PostDate);
-            NoSeriesMgt.InitSeries('GJNL-RCPT','',GenJrnl."Posting Date",GenJrnl."Document No.",DummyCode);
-            Doc := GenJrnl."Document No.";
-            GenJrnl.Validate("Account Type",GenJrnl."Account Type"::"Bank Account");
-            GenJrnl.Validate("Account No.",GLSetup."Reconcillation Bank Acc");
-            GenJrnl.Description := StrSubstNo('%1 Payments For %2',Buff."Payment Gate Way",Today);
-            GenJrnl.Validate("Document Type",GenJrnl."Document Type"::Payment);
-            GenJrnl.Validate(Amount,InvTot);
-            GenJrnl.Modify();
-            Buff.Setrange("Order Type",Buff."Order Type"::Invoice);
-            If Buff.findset then
-            repeat
-                GenJrnl.INIT;
-                GenJrnl.VALIDATE("Journal Template Name",'CASH RECE');
-                GenJrnl.VALIDATE("Journal Batch Name",'DEFAULT');
-                GenJrnl."Source Code" := 'CASHRECJNL';
-                LineNo += 10;
-                GenJrnl."Line No." := LineNo;
-                GenJrnl.INSERT(true);
-                GenJrnl.FILTERGROUP(2);
-                GenJrnl.VALIDATE("Posting Date",PostDate);
-                GenJrnl."Document No." := Doc;
-                GenJrnl.Validate("Account Type",GenJrnl."Account Type"::"G/L Account");
-                GenJrnl.Validate("Account No.",GLsetup."Reconcillation Clearing Acc");
-                GenJrnl.Description := StrSubstNo('Shopify Order No %1 for Order Date %2 - ' + Buff."Payment Gate Way", Buff."Shopify Order No.",Buff."Shopify Order Date");
-                GenJrnl.Validate("Document Type",GenJrnl."Document Type"::Payment);
-                GenJrnl.Validate(Amount,-Buff."Order Total");
-                GenJrnl.Modify();
-                Buff."Cash Receipt Status" := Buff."Cash Receipt Status"::Applied;
-                Buff.Modify();
-                TmpBuff.Copy(Buff);
-                TmpBuff.insert;
-            until Buff.next = 0;
-            Commit;
-        end;
-        if CrdTot < 0 then
-        begin
-            GenJrnl.INIT;
-            GenJrnl.VALIDATE("Journal Template Name",'CASH RECE');
-            GenJrnl.VALIDATE("Journal Batch Name",'DEFAULT');
-            GenJrnl."Source Code" := 'CASHRECJNL';
-            LineNo += 10;
-            GenJrnl."Line No." := LineNo;
-            GenJrnl.INSERT(true);
-            GenJrnl.FILTERGROUP(2);
-            GenJrnl.VALIDATE("Posting Date",PostDate);
-            NoSeriesMgt.InitSeries('GJNL-RCPT','',GenJrnl."Posting Date",GenJrnl."Document No.",DummyCode);
-            Doc := GenJrnl."Document No.";
-            GenJrnl.Validate("Account Type",GenJrnl."Account Type"::"Bank Account");
-            GenJrnl.Validate("Account No.",GLSetup."Reconcillation Bank Acc");
-            GenJrnl.Description := StrSubstNo('%1 Refunds For %2',Buff."Payment Gate Way",Today);
-            GenJrnl.Validate("Document Type",GenJrnl."Document Type"::Refund);
-            GenJrnl.Validate(Amount,CrdTot);
-            GenJrnl.Modify();
-            Buff.Setrange("Order Type",Buff."Order Type"::CreditMemo);
-            If Buff.findset then
-            repeat
-                GenJrnl.INIT;
-                GenJrnl.VALIDATE("Journal Template Name",'CASH RECE');
-                GenJrnl.VALIDATE("Journal Batch Name",'DEFAULT');
-                GenJrnl."Source Code" := 'CASHRECJNL';
-                LineNo += 10;
-                GenJrnl."Line No." := LineNo;
-                GenJrnl.INSERT(true);
-                GenJrnl.FILTERGROUP(2);
-                GenJrnl.VALIDATE("Posting Date",PostDate);
-                GenJrnl."Document No." := Doc;
-                GenJrnl.Validate("Account Type",GenJrnl."Account Type"::"G/L Account");
-                GenJrnl.Validate("Account No.",GLsetup."Reconcillation Clearing Acc");
-                GenJrnl.Description := StrSubstNo('Shopify Order No %1 for Order Date %2 - ' + Buff."Payment Gate Way", Buff."Shopify Order No.",Buff."Shopify Order Date");
-                GenJrnl.Validate("Document Type",GenJrnl."Document Type"::Refund);
-                GenJrnl.Validate(Amount,Buff."Order Total");
-                GenJrnl.Modify();
-                Buff."Cash Receipt Status" := Buff."Cash Receipt Status"::Applied;
-                Buff.Modify();
-                TmpBuff.Copy(Buff);
-                TmpBuff.insert;
-            until Buff.next = 0;
-            Commit;
-        end;
-        Clear(Doc);
-        Buff.Setrange("Order Type");
-        Buff.Setrange("Cash Receipt Status",Buff."Cash Receipt Status"::Applied);
-        Buff.Setrange("Invoice Applied Status",Buff."Invoice Applied Status"::UnApplied);
-        Buff.Setfilter("BC Reference No.",'<>%1&<>%2','','N/A');
-        Buff.Setfilter(Buff."Order Total",'>0');
-        If Buff.findset then
-        repeat
-            Clear(Doc);
-            If Sinv.get(Buff."BC Reference No.") AND (Buff."Order Type" = Buff."Order Type"::Invoice) then
-                Doc := Sinv."No."
-            else If Scrd.get(Buff."BC Reference No.") AND (Buff."Order Type" = Buff."Order Type"::CreditMemo) then
-                     Doc := Scrd."No.";
-            If doc <> '' then
-            begin
-                GenJrnl.INIT;
-                GenJrnl.VALIDATE("Journal Template Name",'CASH RECE');
-                GenJrnl.VALIDATE("Journal Batch Name",'DEFAULT');
-                GenJrnl."Source Code" := 'CASHRECJNL';
-                LineNo += 10;
-                GenJrnl."Line No." := LineNo;
-                GenJrnl.INSERT(true);
-                GenJrnl.FILTERGROUP(2);
-                GenJrnl.VALIDATE("Posting Date",PostDate);
-                NoSeriesMgt.InitSeries('GJNL-RCPT','',GenJrnl."Posting Date",GenJrnl."Document No.",DummyCode);
-                GenJrnl.VALIDATE("Account Type",GenJrnl."Account Type"::Customer);
-                GenJrnl.VALIDATE("Account No.",'PETCULTURE');
-                GenJrnl.Validate("Bal. Account Type",GenJrnl."Bal. Account Type"::"G/L Account");
-                GenJrnl.Validate("Bal. Account No.",GLSetup."Reconcillation Clearing Acc");
-                GenJrnl.Description := StrSubstNo('Shopify Order No %1 for Order Date %2',Buff."Shopify Order No.",Buff."Shopify Order Date");
-                If Buff."Order Type" = Buff."Order Type"::Invoice then
-                begin
-                    GenJrnl.Validate("Document Type",GenJrnl."Document Type"::Payment);
-                    GenJrnl.Validate(Amount,-Buff."Order Total");
-                    GenJrnl."Applies-to Doc. Type" := GenJrnl."Applies-to Doc. Type"::Invoice;
-                end    
-                else
-                begin
-                    GenJrnl.Validate("Document Type",GenJrnl."Document Type"::Refund);
-                    GenJrnl.Validate(Amount,Buff."Order Total");
-                    GenJrnl."Applies-to Doc. Type" := GenJrnl."Applies-to Doc. Type"::"Credit Memo";
-                end;
-                GenJrnl."Applies-to Doc. No." := Doc;
-                GenJrnl.Modify();
-                Buff."Invoice Applied Status" := Buff."Invoice Applied Status"::Applied;
-                Buff.Modify();
-                TmpBuff.Copy(Buff);
-                If TmpBuff.Get(Buff.ID) then
-                    TmpBuff.modify
-                else
-                    Tmpbuff.Insert();    
-            end;
-        until Buff.next = 0;
-        Commit; 
-        if Not GenJrnl.IsEmpty then 
-        Begin
-            if not Cu.Run(GenJrnl) then
-            begin
-                TmpBuff.Reset;
-                TmpBuff.Findset;
-                repeat
-                    Buff.Get(TmpBuff.ID);
-                    Buff."Cash Receipt Status" := Buff."Cash Receipt Status"::UnApplied;
-                    Buff."Invoice Applied Status" := Buff."Invoice Applied Status"::UnApplied;
-                    Buff.Modify();
-                until TmpBuff.next = 0;    
-            end;
-        end;
-        If PstDate <> 0D then
-        begin
-            GLSetup."Allow Posting To" := PstDate;
-            GLSetup.Modify(false);
-        end;
-    end;   
-    procedure Build_Reconcilliation_Cash_Receipts(var Buff:record "PC Order Reconciliations" temporary;FeeAcc:Code[20];PostDate:Date;Fee:Decimal)
-    var
-        GenJrnlBatch:record "Gen. Journal Batch";
-        GenJrnl:Record "Gen. Journal Line";
-        GenTemplate:Record "Gen. Journal Template";
-        NoSeriesMgt:Codeunit NoSeriesManagement;
-        DummyCode:Code[10];
-        GLSetup:Record "General Ledger Setup";
-        ClearAcc:Code[20];
-        Lineno:Integer;
-        Sinv:Record "Sales Invoice Header";
-        Scrd:record "Sales Cr.Memo Header";
-        Doc:Code[20];
-        InvTot:Decimal;
-        CrdTot:decimal;
-        GenJtrnTemp:Record "Gen. Journal Template";
-        Cu:Codeunit "Gen. Jnl.-Post";
-        PstDate:date;
-        OrdHdr:Record "PC Shopify Order Header";
-        TmpBuff:array[2] of record "PC Order Reconciliations" temporary;
-        RecCon:Record "PC Order Reconciliations";
-        CustLed:record "Cust. Ledger Entry";
-        RecTot:Record "PC Reconciliation Totaler" temporary;
-        ExFlg:Boolean;
-        i:Integer;
-    begin
-        TmpBuff[1].reset;
-        If Tmpbuff[1].Findset then Tmpbuff[1].DeleteAll();
-        TmpBuff[2].reset;
-        If Tmpbuff[2].Findset then Tmpbuff[2].DeleteAll();
-        GLSetup.get;
-        If GLSetup."Reconcillation Bank Acc" = '' then
-        begin
-            Message('Reconciliation Bank acc not defined in General Ledger Setup');
-            exit;
-        end;
-        If Not Buff.IsEmpty then
-        begin    
-            Case Buff."Payment Gate Way" of 
-                Buff."Payment Gate Way"::"Shopify Pay":
-                begin
-                    If GLSetup."Shopify Pay Clearing Acc" = '' then
-                    begin
-                        Message('Shopify Pay Clearing acc not defined in General Ledger Setup');
-                        exit;
-                    end;
-                    ClearAcc := GLSetup."Shopify Pay Clearing Acc";    
-                end;
-                Buff."Payment Gate Way"::PayPal:
-                begin
-                    If GLSetup."PayPal Clearing Acc" = '' then
-                    begin
-                        Message('PayPal Clearing acc not defined in General Ledger Setup');
-                        exit;
-                    end;  
-                    ClearAcc := GLSetup."PayPal Clearing Acc";    
-                end;
-                Buff."Payment Gate Way"::AfterPay:
-                begin
-                    If GLSetup."AfterPay Clearing Acc" = '' then
-                    begin
-                        Message('After Pay Clearing acc not defined in General Ledger Setup');
-                        exit;
-                    end;    
-                    ClearAcc := GLSetup."AfterPay Clearing Acc";    
-                end;
-                Buff."Payment Gate Way"::MarketPlace:
-                begin
-                    If GLSetup."MarketPlace Clearing Acc" = '' then
-                    begin
-                        Message('MarketPlace Clearing acc not defined in General Ledger Setup');
-                        exit;
-                    end;    
-                    ClearAcc := GLSetup."MarketPlace Clearing Acc";    
-                end;
-                Buff."Payment Gate Way"::Zip:
-                begin
-                    If GLSetup."Zip Clearing Acc" = '' then
-                    begin
-                        Message('Zip Clearing acc not defined in General Ledger Setup');
-                        exit;
-                    end;    
-                    ClearAcc := GLSetup."Zip Clearing Acc";    
-                end;
-                Buff."Payment Gate Way"::Misc:
-                begin
-                    If GLSetup."Misc Clearing Acc" = '' then
-                    begin
-                        Message('Misc Clearing acc not defined in General Ledger Setup');
-                        exit;
-                    end;    
-                    ClearAcc := GLSetup."Misc Clearing Acc";    
-                end;
-            End;
-            If Not GenJtrnTemp.Get('CASH RECE') then
-            begin
-                GenJtrnTemp.Init();
-                GenJtrnTemp.Validate(Name,'CASH RECE');
-                GenJtrnTemp.insert;
-                GenJtrnTemp.Description := 'Cash Receipts journal';
-                GenJtrnTemp.validate(Type,GenJtrnTemp.type::"Cash Receipts");
-                GenJtrnTemp.Validate("Bal. Account Type",GenJtrnTemp."Bal. Account Type"::"G/L Account");
-                GenJtrnTemp.Validate("Source Code",'CASHRECJNL');
-                GenJtrnTemp.Validate("Force Doc. Balance",true);
-                GenJtrnTemp.Validate("Copy VAT Setup to Jnl. Lines",true);
-                GenJtrnTemp.validate("Copy to Posted Jnl. Lines",true);
-                GenJtrnTemp.Modify();
-            end;
-            If Not GenJrnlBatch.Get('CASH RECE','DEFAULT') then
-            begin
-                GenJrnlBatch.init;
-                GenJrnlBatch.validate("Journal Template Name",'CASH RECE');
-                GenJrnlBatch.Validate(Name,'DEFAULT');
-                GenJrnlBatch.Insert();
-                GenJrnlBatch.Validate("Bal. Account Type",GenJrnlBatch."Bal. Account Type"::"G/L Account");
-                GenJrnlBatch.Validate("No. Series",'GJNL-RCPT');
-                GenJrnlBatch.modify();
-            end;
-            Clear(PstDate);
-            If (GLSetup."Allow Posting To" <> 0D) AND (GLSetup."Allow Posting To" < PostDate) then 
-            begin
-                PstDate := GLSetup."Allow Posting To";
-                Clear(GLSetup."Allow Posting To");
-                GLSetup.MOdify(false);       
-            end;
-            Clear(InvTot);
-            Clear(CrdTot);
-            Clear(Lineno);
-            GenJrnl.reset;
-            GenJrnl.Setrange("Journal Template Name",'CASH RECE');
-            GenJrnl.Setrange("Journal Batch Name",'DEFAULT');
-            If GenJrnl.findset then GenJrnl.DeleteAll();
-            Buff.Setrange("Apply Status",Buff."Apply Status"::UnApplied);
-            Buff.Setfilter(Buff."Order Total",'>0');
-            If Buff.findset then
-            repeat
-                If Buff."Shopify Order Type" = Buff."Shopify Order Type"::Invoice then
-                    InvTot += Buff."Order Total"
-                else
-                    CrdTot -= Buff."Order Total";
-            until Buff.next = 0;
-            if InvTot > 0 then
-            begin
-                GenJrnl.INIT;
-                GenJrnl.VALIDATE("Journal Template Name",'CASH RECE');
-                GenJrnl.VALIDATE("Journal Batch Name",'DEFAULT');
-                GenJrnl."Source Code" := 'CASHRECJNL';
-                LineNo += 10;
-                GenJrnl."Line No." := LineNo;
-                GenJrnl.INSERT(true);
-                GenJrnl.FILTERGROUP(2);
-                GenJrnl.VALIDATE("Posting Date",PostDate);
-                NoSeriesMgt.InitSeries('GJNL-RCPT','',GenJrnl."Posting Date",GenJrnl."Document No.",DummyCode);
-                Doc := GenJrnl."Document No.";
-                GenJrnl.Validate("Account Type",GenJrnl."Account Type"::"Bank Account");
-                GenJrnl.Validate("Account No.",GLSetup."Reconcillation Bank Acc");
-                GenJrnl.Description := StrSubstNo('%1 Payments For %2',Buff."Payment Gate Way",PostDate);
-                GenJrnl.Validate("Document Type",GenJrnl."Document Type"::Payment);
-                GenJrnl.Validate(Amount,InvTot);
-                GenJrnl.Modify();
-                Buff.Setrange("Shopify Order Type",Buff."Shopify Order Type"::Invoice);
-                If Buff.findset then
-                repeat
-                    GenJrnl.INIT;
-                    GenJrnl.VALIDATE("Journal Template Name",'CASH RECE');
-                    GenJrnl.VALIDATE("Journal Batch Name",'DEFAULT');
-                    GenJrnl."Source Code" := 'CASHRECJNL';
-                    LineNo += 10;
-                    GenJrnl."Line No." := LineNo;
-                    GenJrnl.INSERT(true);
-                    GenJrnl.FILTERGROUP(2);
-                    GenJrnl.VALIDATE("Posting Date",PostDate);
-                    GenJrnl."Document No." := Doc;
-                    GenJrnl.Validate("Account Type",GenJrnl."Account Type"::"G/L Account");
-                    GenJrnl.Validate("Account No.",ClearAcc);
-                    GenJrnl.Description := StrSubstNo('Shopify Order No %1 for Order Date %2 - ' + Format(Buff."Payment Gate Way"), Buff."Shopify Order No",Buff."Shopify Order Date");
-                    GenJrnl.Validate("Document Type",GenJrnl."Document Type"::Payment);
-                    GenJrnl.Validate(Amount,-Buff."Order Total");
-                    GenJrnl.Modify();
-                    Buff."Apply Status" := Buff."Apply Status"::CashApplied;
-                    Buff.Modify();
-                    TmpBuff[1].Copy(Buff);
-                    TmpBuff[1].insert;
-                until Buff.next = 0;
-                Commit;
-            end;
-            if CrdTot < 0 then
-            begin
-                GenJrnl.INIT;
-                GenJrnl.VALIDATE("Journal Template Name",'CASH RECE');
-                GenJrnl.VALIDATE("Journal Batch Name",'DEFAULT');
-                GenJrnl."Source Code" := 'CASHRECJNL';
-                LineNo += 10;
-                GenJrnl."Line No." := LineNo;
-                GenJrnl.INSERT(true);
-                GenJrnl.FILTERGROUP(2);
-                GenJrnl.VALIDATE("Posting Date",PostDate);
-                NoSeriesMgt.InitSeries('GJNL-RCPT','',GenJrnl."Posting Date",GenJrnl."Document No.",DummyCode);
-                Doc := GenJrnl."Document No.";
-                GenJrnl.Validate("Account Type",GenJrnl."Account Type"::"Bank Account");
-                GenJrnl.Validate("Account No.",GLSetup."Reconcillation Bank Acc");
-                GenJrnl.Description := StrSubstNo('%1 Refunds For %2',Buff."Payment Gate Way",PostDate);
-                GenJrnl.Validate("Document Type",GenJrnl."Document Type"::Refund);
-                GenJrnl.Validate(Amount,CrdTot);
-                GenJrnl.Modify();
-                Buff.Setrange("Shopify Order Type",Buff."Shopify Order Type"::Refund);
-                If Buff.findset then
-                repeat
-                    GenJrnl.INIT;
-                    GenJrnl.VALIDATE("Journal Template Name",'CASH RECE');
-                    GenJrnl.VALIDATE("Journal Batch Name",'DEFAULT');
-                    GenJrnl."Source Code" := 'CASHRECJNL';
-                    LineNo += 10;
-                    GenJrnl."Line No." := LineNo;
-                    GenJrnl.INSERT(true);
-                    GenJrnl.FILTERGROUP(2);
-                    GenJrnl.VALIDATE("Posting Date",PostDate);
-                    GenJrnl."Document No." := Doc;
-                    GenJrnl.Validate("Account Type",GenJrnl."Account Type"::"G/L Account");
-                    GenJrnl.Validate("Account No.",ClearAcc);
-                    GenJrnl.Description := StrSubstNo('Shopify Order No %1 for Order Date %2 - ' + Format(Buff."Payment Gate Way"), Buff."Shopify Order No",Buff."Shopify Order Date");
-                    GenJrnl.Validate("Document Type",GenJrnl."Document Type"::Refund);
-                    GenJrnl.Validate(Amount,Buff."Order Total");
-                    GenJrnl.Modify();
-                    Buff."Apply Status" := Buff."Apply Status"::CashApplied;
-                    Buff.Modify();
-                    TmpBuff[1].Copy(Buff);
-                    TmpBuff[1].insert;
-                until Buff.next = 0;
-            end;
-            GenJrnl.reset;
-            GenJrnl.Setrange("Journal Template Name",'CASH RECE');
-            GenJrnl.Setrange("Journal Batch Name",'DEFAULT');
-            If GenJrnl.findset then 
-            Begin 
-                If (Fee > 0) And (FeeAcc <> '') then
-                begin
-                    GenJrnl.INIT;
-                    GenJrnl.VALIDATE("Journal Template Name",'CASH RECE');
-                    GenJrnl.VALIDATE("Journal Batch Name",'DEFAULT');
-                    GenJrnl."Source Code" := 'CASHRECJNL';
-                    LineNo += 10;
-                    GenJrnl."Line No." := LineNo;
-                    GenJrnl.INSERT(true);
-                    GenJrnl.FILTERGROUP(2);
-                    GenJrnl.VALIDATE("Posting Date",PostDate);
-                    NoSeriesMgt.InitSeries('GJNL-RCPT','',GenJrnl."Posting Date",GenJrnl."Document No.",DummyCode);
-                    Doc := GenJrnl."Document No.";
-                    GenJrnl.Validate("Account Type",GenJrnl."Account Type"::"G/L Account");
-                    GenJrnl.Validate("Account No.",FeeAcc);
-                    GenJrnl.Description := StrSubstNo('%1 Merchant Fees %2',Buff."Payment Gate Way",PostDate);
-                    GenJrnl.validate("Gen. Posting Type",GenJrnl."Gen. Posting Type"::Purchase);
-                    GenJrnl.validate("Gen. Bus. Posting Group",'DOMESTIC');
-                    GenJrnl.validate("Gen. Prod. Posting Group",'MISC');
-                    GenJrnl.validate("VAT Bus. Posting Group",'DOMESTIC');
-                    GenJrnl.validate("VAT Prod. Posting Group",'GST10');
-                    GenJrnl.Validate("Document Type",GenJrnl."Document Type"::Payment);
-                    GenJrnl.Validate(Amount,Fee);
-                    GenJrnl.validate("Bal. Account Type",GenJrnl."Bal. Account Type"::"Bank Account");
-                    GenJrnl.Validate("Bal. Account No.",GLSetup."Reconcillation Bank Acc");
-                    GenJrnl.Modify();
-                end;    
-                TmpBuff[1].Reset;
-                If TmpBuff[1].Findset then
-                repeat
-                    If RecCon.get(TmpBuff[1]."Shopify Order ID",TmpBuff[1]."Shopify Order Type") then
-                    begin
-                        RecCon."Apply Status" := TmpBuff[1]."Apply Status";
-                        RecCon.Modify();
-                    end;
-                until TmpBuff[1].next = 0;
-                Commit;    
-            end;        
-        end;    
-        RecCon.Reset;
-        RecCon.Setfilter("Order Total",'<=0');
-        RecCon.Setrange("Apply Status",RecCon."Apply Status"::UnApplied);
-        If RecCon.findset then
-            RecCon.ModifyAll("Apply Status",RecCon."Apply Status"::Completed,false);
-        // now we see what is cash applied that we may be able to invoice apply
-        RecTot.reset;
-        If RecTot.findset then RecTot.DeleteAll();
-        RecCon.Reset;
-        RecCon.SetCurrentKey("Order Total");
-        RecCon.Setrange("Apply Status",RecCon."Apply Status"::CashApplied);
-        If RecCon.findset Then
-        repeat
-            Clear(ClearAcc);
-            Case RecCon."Payment Gate Way" of
-                RecCon."Payment Gate Way"::"Shopify Pay": ClearAcc := GLSetup."Shopify Pay Clearing Acc"; 
-                RecCon."Payment Gate Way"::Paypal: ClearAcc := GLSetup."PayPal Clearing Acc"; 
-                RecCon."Payment Gate Way"::AfterPay :ClearAcc := GLSetup."AfterPay Clearing Acc"; 
-                RecCon."Payment Gate Way"::Zip:ClearAcc := GLSetup."Zip Clearing Acc"; 
-                RecCon."Payment Gate Way"::MarketPlace: ClearAcc := GLSetup."MarketPlace Clearing Acc"; 
-                RecCon."Payment Gate Way"::Misc: ClearAcc := GLSetup."Misc Clearing Acc";
-            end;     
-            If ClearAcc <> '' then
-            begin
-                Clear(Doc);
-                OrdHdr.Reset;
-                OrdHdr.Setrange("Shopify Order ID",RecCon."Shopify Order ID");
-                OrdHdr.SetRange("Order Type",OrdHdr."Order Type"::invoice); 
-                if RecCon."Shopify Order Type" = RecCon."Shopify Order Type"::Refund then
-                    OrdHdr.SetRange("Order Type",OrdHdr."Order Type"::CreditMemo); 
-                If OrdHdr.findset then
-                begin
-                    If Sinv.get(OrdHdr."BC Reference No.") AND (OrdHdr."Order Type" = OrdHdr."Order Type"::Invoice) then
-                        Doc := Sinv."No."
-                    else If Scrd.get(OrdHdr."BC Reference No.") AND (OrdHdr."Order Type" = OrdHdr."Order Type"::CreditMemo) then
-                        Doc := Scrd."No.";
-                end;         
-                If (Doc <> '') And (RecCon."Order Total" > 0) then
-                begin
-                    CustLed.reset;
-                    CustLed.Setrange("Document Type",CustLed."Document Type"::Invoice);
-                    if RecCon."Shopify Order Type" = RecCon."Shopify Order Type"::Refund then
-                        CustLed.Setrange("Document Type",CustLed."Document Type"::"Credit Memo");
-                    CustLed.Setrange("Document No.",Doc);
-                    CustLed.setrange(Open,True);
-                    Exflg := CustLed.findset;
-                    If Exflg then
-                    begin
-                        CustLed.CalcFields("Remaining Amount");
-                        If Not RecTot.get(Doc,RecCon."Shopify Order Type") then
-                        begin
-                            RecTot.init;
-                            RecTot."Doc No." := Doc;
-                            RecTot."Doc Type" := RecCon."Shopify Order Type";
-                            Rectot.Total := ABS(CustLed."Remaining Amount");
-                            RecTot.insert;
-                        end;
-                        RecTot.Totaliser += RecCon."Order Total";
-                        RecTot.Modify();
-                    end;
-                    If Exflg then ExFlg := RecTot.Total >= RecTot.Totaliser;
-                    If Exflg then
-                    Begin
-                        GenJrnl.INIT;
-                        GenJrnl.VALIDATE("Journal Template Name",'CASH RECE');
-                        GenJrnl.VALIDATE("Journal Batch Name",'DEFAULT');
-                        GenJrnl."Source Code" := 'CASHRECJNL';
-                        LineNo += 10;
-                        GenJrnl."Line No." := LineNo;
-                        GenJrnl.INSERT(true);
-                        GenJrnl.FILTERGROUP(2);
-                        GenJrnl.VALIDATE("Posting Date",PostDate);
-                        NoSeriesMgt.InitSeries('GJNL-RCPT','',GenJrnl."Posting Date",GenJrnl."Document No.",DummyCode);
-                        GenJrnl.VALIDATE("Account Type",GenJrnl."Account Type"::Customer);
-                        GenJrnl.VALIDATE("Account No.",'PETCULTURE');
-                        GenJrnl.Validate("Bal. Account Type",GenJrnl."Bal. Account Type"::"G/L Account");
-                        GenJrnl.Validate("Bal. Account No.",ClearAcc);
-                        GenJrnl.Description := StrSubstNo('Shopify Order No %1 for Order Date %2',RecCon."Shopify Order No",RecCon."Shopify Order Date");
-                        If RecCon."Shopify Order Type" = RecCon."Shopify Order Type"::Invoice then
-                        begin
-                            GenJrnl.Validate("Document Type",GenJrnl."Document Type"::Payment);
-                            GenJrnl.Validate(Amount,-RecCon."Order Total");
-                            GenJrnl."Applies-to Doc. Type" := GenJrnl."Applies-to Doc. Type"::Invoice;
-                        end    
-                        else
-                        begin
-                            GenJrnl.Validate("Document Type",GenJrnl."Document Type"::Refund);
-                            GenJrnl.Validate(Amount,RecCon."Order Total");
-                            GenJrnl."Applies-to Doc. Type" := GenJrnl."Applies-to Doc. Type"::"Credit Memo";
-                        end;
-                        GenJrnl."Applies-to Doc. No." := Doc;
-                        GenJrnl.Modify();
-                        TmpBuff[2].Copy(RecCon);
-                        TmpBuff[2]."Apply Status" := TmpBuff[2]."Apply Status"::Completed;
-                        TmpBuff[2].Insert();    
-                    end;
-                end;
-            end;
-        until RecCon.Next = 0;
-        Commit;
-        GenJrnl.reset;
-        GenJrnl.Setrange("Journal Template Name",'CASH RECE');
-        GenJrnl.Setrange("Journal Batch Name",'DEFAULT');
-        If GenJrnl.findset then 
-        Begin
-            if Cu.Run(GenJrnl) then
-            begin
-                TmpBuff[2].Reset;
-                If TmpBuff[2].Findset then
-                repeat
-                    If RecCon.get(TmpBuff[2]."Shopify Order ID",TmpBuff[2]."Shopify Order Type") then
-                    begin
-                        RecCon."Apply Status" := TmpBuff[2]."Apply Status";
-                        RecCon.Modify();
-                    end;
-                until TmpBuff[2].next = 0;    
-            end
-            Else
-            begin
-                TmpBuff[1].Reset;
-                If TmpBuff[1].Findset then
-                repeat
-                    If RecCon.get(TmpBuff[1]."Shopify Order ID",TmpBuff[1]."Shopify Order Type") then
-                    begin
-                        RecCon."Apply Status" := RecCon."Apply Status"::UnApplied;
-                        RecCon.Modify();
-                    end;
-                until TmpBuff[1].next = 0;
-                Message(GetLastErrorText());    
-            end;    
-        end;                
-        If PstDate <> 0D then
-        begin
-            GLSetup."Allow Posting To" := PstDate;
-            GLSetup.Modify(false);
-        end;
-    end; 
-
-    [EventSubscriber(ObjectType::Codeunit, Codeunit::"Gen. Jnl.-Post", 'OnBeforeCode', '', true, true)]
-    local procedure "Gen. Jnl.-Post_OnBeforeCode"
-    (
-        var GenJournalLine: Record "Gen. Journal Line";
-		var HideDialog: Boolean
-    )
-    begin
-        HideDialog := True;
-    end;
-    /*
-    [EventSubscriber(ObjectType::Codeunit, Codeunit::"Gen. Jnl.-Post", 'OnBeforeShowPostResultMessage', '', true, true)]
-    local procedure "Gen. Jnl.-Post_OnBeforeShowPostResultMessage"
-    (
-        var GenJnlLine: Record "Gen. Journal Line";
-		TempJnlBatchName: Code[10];
-		var IsHandled: Boolean
-    )
-    begin
-        IsHandled := True;
-    end;
-*/
-
+ 
 }

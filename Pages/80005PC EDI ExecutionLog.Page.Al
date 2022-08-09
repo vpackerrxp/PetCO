@@ -14,6 +14,35 @@ page 80005 "PC EDI Execution Log"
     {
         area(content)
         {
+            field("PO Number Filter"; PONum)
+            {
+                ApplicationArea = All;
+                Style = Strong;
+                trigger OnDrillDown()
+                var
+                    Pg:Page "Purchase Order List";
+                    PurchHdr:Record "Purchase Header";
+                begin
+                    PurchHdr.reset;
+                    PurchHdr.Setrange("Document Type",PurchHdr."Document Type"::Order);
+                    PurchHdr.SetRange("Order Type",PurchHdr."Order Type"::Fulfilo);
+                    PurchHdr.Setrange("EDI Status",PurchHdr."EDI Status"::"EDI Vendor");   
+                    Clear(PONum);
+                    Pg.SetTableView(PurchHdr);
+                    Pg.LookupMode := true;
+                    if pg.RunModal() = Action::LookupOK then
+                    begin
+                        Pg.GetRecord(PurchHdr);
+                        Ponum := PurchHdr."No."
+                    end;
+                    Setfilters;
+                end;
+                trigger OnAssistEdit()
+                begin
+                    Clear(PONum);
+                    Setfilters();
+                end;
+            }
             repeater(General)
             {
                 field("Excution Date/Time"; Rec."Execution Date/Time")
@@ -57,6 +86,12 @@ page 80005 "PC EDI Execution Log"
             }
         }
     }
+    local procedure Setfilters()
+    Begin
+        Rec.reset;
+        If PONum <> '' then rec.Setrange("Purchase Order No.",PONum);
+        CurrPage.update(false);    
+    End;
     
     trigger OnOpenPage()
     begin
@@ -65,5 +100,7 @@ page 80005 "PC EDI Execution Log"
         If Rec.findset then Rec.DeleteAll();
         Rec.reset;
     end;
+    var
+        PONum:code[20];
 
 }

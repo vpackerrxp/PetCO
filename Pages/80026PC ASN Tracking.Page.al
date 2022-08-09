@@ -94,8 +94,6 @@ page 80026 "PC ASN Tracking"
         If PONum <> '' then rec.Setrange("PO No.",PONum);
         CurrPage.update(false);    
     End;
-
-
     var
         PONum:code[20];
 
