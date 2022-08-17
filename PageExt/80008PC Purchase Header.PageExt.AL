@@ -375,7 +375,7 @@ pageextension 80008 "PC Purchase Header Ext" extends "Purchase Order"
                             exit;
                         end;
                     if Cuex.Send_PO_Email(PurchHdr) then
-                        Message('PO has been emailed succesfully to ' + Ven."Operations E-Mail")
+                        Message('PO has been emailed successfully to ' + Ven."Operations E-Mail")
                     else
                         Message('Emailing has failed for ' + Ven."Operations E-Mail");    
                 end;       

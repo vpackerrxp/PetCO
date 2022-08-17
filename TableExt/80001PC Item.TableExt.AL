@@ -175,7 +175,7 @@ tableextension 80001 "PC Items Ext" extends Item
         {
             FieldClass = FlowField;
             CalcFormula = count("PC Shopify Item Relations"
-                          WHERE ("Parent Item No."=FIELD("No.")));
+                          WHERE ("Parent Item No."=FIELD("No."),"Un Publish Child"=const(False)));
         }
         Field(80019;"Fulfilo Inventory";Decimal)
         {

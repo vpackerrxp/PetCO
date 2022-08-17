@@ -736,7 +736,7 @@ procedure FulFilo_Login_Connection():Boolean
         end;
         exit(Flg);             
     end;
-    Procedure Build_Fulfilo_Inventory_Levels(Offset:Integer)
+    Procedure Build_Fulfilo_Inventory_Levels():Boolean
     var
         Parms:Dictionary of [text,text];
         Data:JsonObject;
@@ -746,15 +746,14 @@ procedure FulFilo_Login_Connection():Boolean
         i:Integer;
         Cnt:Integer;
         Finv:Record "PC Fulfilo Inventory";
-        FRes:Record "PC Fulfilo Inv. Delta Reasons";
+        RunFlg:Boolean;
     Begin
+        Clear(RunFlg);
         if FulFilo_Login_Connection() then
         Begin
             Clear(Cnt);
             Finv.Reset;
             If Finv.Findset then Finv.Deleteall();    
-            FRes.Reset;
-            if Fres.FindSet() then Fres.DeleteAll();
             Parms.add('limit','250');
             Parms.add('page','1');
             if FulFilio_Data(Paction::GET,'/api/v1/inventories',Parms,PayLoad,Data) then
@@ -781,8 +780,31 @@ procedure FulFilo_Login_Connection():Boolean
                         If JsToken[1].AsValue().AsBoolean() then Process_FulFilo_Stock_Levels(Data,i,Cnt);
                     end;        
                 end;
+                RunFlg := True;
             end 
-            else Error('Failed Communications to fulfilio for inventory levels');
+            else If GuiAllowed then Message('Failed Communications to fulfilio for inventory levels');
+        end
+        else If GuiAllowed then Message('Failed fulfilio login');
+        exit(RunFlg);   
+    end;
+    Procedure Build_Fulfilo_Inventory_Deltas(Offset:Integer):Boolean
+    var
+        Parms:Dictionary of [text,text];
+        Data:JsonObject;
+        PayLoad:text;
+        JsArry:JsonArray;
+        JsToken:array[2] of JsonToken;
+        i:Integer;
+        Cnt:Integer;
+        FRes:Record "PC Fulfilo Inv. Delta Reasons";
+        RunFlg:Boolean;
+    begin
+        Clear(RunFlg);
+        if FulFilo_Login_Connection() then
+        Begin
+            Clear(Cnt);
+            FRes.Reset;
+            if Fres.FindSet() then Fres.DeleteAll();
             If Offset = 0 then Offset := 7;
             Clear(Cnt);        
             Clear(Parms);
@@ -818,11 +840,13 @@ procedure FulFilo_Login_Connection():Boolean
                         If JsToken[1].AsValue().AsBoolean() then Process_Fulfilo_Inv_Deltas(Data,i,Cnt);
                     end;        
                 end; 
-            end 
-                else error('Failed Communications with fulfilio for deltas');    
+                RunFlg := True; 
+            end
+            else If GuiAllowed then Message('Failed Communications with fulfilio for deltas');    
         end
-                else error('Failed fulfilio login');    
-    end;
+        else If GuiAllowed then Message('Failed fulfilio login');
+        exit(RunFlg);       
+    end;    
     local procedure Process_Fulfilo_Stock_Levels(var Data:JsonObject;Cnt:Integer;PagCnt:integer)
     var
         Parms:Dictionary of [text,text];

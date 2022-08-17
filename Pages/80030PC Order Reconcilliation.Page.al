@@ -330,7 +330,6 @@ page 80030 "PC Order Reconciliation"
                         EditFlg := confirm('Allow Editing',true);
                         CurrPage.update(false);
                     end;
-
                 }
             }
             Group(Totals)

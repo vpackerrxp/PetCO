@@ -28,7 +28,11 @@ pageextension 80017 "PC Pstd Sales Inv Subform Ext" extends "Posted Sales Invoic
             {
                 ApplicationArea = All;
             }
-             field("Shopify App ID"; rec."Shopify Application ID")
+            field("Shopify Order Date";rec."Shopify Order Date")
+            {
+                ApplicationArea = All;
+            }
+              field("Shopify App ID"; rec."Shopify Application ID")
             {
                 ApplicationArea = All;
             }

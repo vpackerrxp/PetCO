@@ -29,6 +29,16 @@ layout
                 ToolTip = 'Manages Vendor Rebates';
                 RunObject = Page  "PC Rebate Payments";
             }
+            Action(Msg1A)
+            {
+                ApplicationArea = all;
+                Caption = 'Vendor Campaign Rebates';
+                Image = Change;
+                Promoted = true;
+                PromotedCategory = Category7;
+                ToolTip = 'Manages Vendor Campaign Rebates';
+                RunObject = Page  "PC Campaign Rebates";
+            }
             Action(MsgA)
             {
                 ApplicationArea = all;

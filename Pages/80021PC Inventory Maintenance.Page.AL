@@ -200,7 +200,8 @@ page 80021 "PC Inventory Maintenance"
                                 Clear(Inc);
                                 Rec.ClearMarks();
                                 SetFilters();
-                                Cu.Build_Fulfilo_Inventory_Levels(Offset);      
+                                Cu.Build_Fulfilo_Inventory_Levels();
+                                Cu.Build_Fulfilo_Inventory_Deltas(Offset)      
                             end;
                         end;
                     }        
@@ -252,7 +253,8 @@ page 80021 "PC Inventory Maintenance"
                             SetFilters();
                             If Confirm('Refresh Fulfilio Data Now',True) then
                             Begin
-                                Cu.Build_Fulfilo_Inventory_Levels(Offset);
+                                Cu.Build_Fulfilo_Inventory_Levels();
+                                Cu.Build_Fulfilo_Inventory_Deltas(Offset);
                                 Clear(RefMsg);
                                 CurrPage.update(False);
                             end;          

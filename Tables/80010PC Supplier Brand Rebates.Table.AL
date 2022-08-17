@@ -5,7 +5,13 @@ table 80010 "PC Supplier Brand Rebates"
         field(10;"Supplier No."; Code[20])
         {
             //Editable = false;
+            TableRelation = Vendor."No.";
         }
+        field(15;"Rebate Supplier No."; Code[20])
+        {
+            //Editable = false;
+            TableRelation = Vendor."No.";
+         }
         field(20;"Brand"; Code[30])
         {
             Editable = false;

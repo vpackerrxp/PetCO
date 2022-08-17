@@ -12,6 +12,10 @@ pageextension 80016 "PC Sales Crd. Note Subform Ext" extends "Sales Cr. memo sub
             {
                 ApplicationArea = All;
             }
+            field("Shopify Order Date";rec."Shopify Order Date")
+            {
+                ApplicationArea = All;
+            }
             field("Shopify App ID"; rec."Shopify Application ID")
             {
                 ApplicationArea = All;

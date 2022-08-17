@@ -28,6 +28,10 @@ pageextension 80006 "PC Sales Invoice Subform Ext" extends "Sales Invoice Subfor
             {
                 ApplicationArea = All;
             }
+            field("Shopify Order Date";rec."Shopify Order Date")
+            {
+                ApplicationArea = All;
+            }
             field("Shopify App ID"; rec."Shopify Application ID")
             {
                 ApplicationArea = All;

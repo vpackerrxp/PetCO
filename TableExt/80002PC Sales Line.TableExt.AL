@@ -55,6 +55,7 @@ tableextension 80002 "PC Sales Line Ext" extends "Sales Line"
         field(80008;"Rebate Supplier No.";Code[20])
         {
            Editable = false;
+           Caption = 'Purchase Supplier No.';
         }
         field(80009;"Rebate Brand";Code[30])
         {
@@ -71,5 +72,18 @@ tableextension 80002 "PC Sales Line Ext" extends "Sales Line"
         {
            Editable = false;
         }
+        field(80012;"Campaign Rebate";boolean)
+        {
+           Editable = false;
+        }
+        field(80013;"Campaign Rebate Supplier";Code[20])
+        {
+           Editable = false;
+        }   
+        field(80014;"Auto Delivery Rebate Supplier";Code[20])
+        {
+           Editable = false;
+        }
+
     }   
 }

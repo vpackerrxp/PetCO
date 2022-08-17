@@ -409,6 +409,17 @@ pageextension 80000 "PC Sales & Rec Setup Ext" extends "Sales & Receivables Setu
                         end;
                     }
                 }
+                Group(Debug)
+                {
+                    Field("Debug Start Date";rec."Debug Start Date")
+                    {
+                        ApplicationArea = All;
+                    }
+                    Field("Debug End Date";rec."Debug End Date")
+                    {
+                        ApplicationArea = All;
+                    }
+                }
             }
         }        
     }
@@ -522,8 +533,13 @@ pageextension 80000 "PC Sales & Rec Setup Ext" extends "Sales & Receivables Setu
                     Pg:page "PC Reverse Apply Selections";
                     Sel:Record Item;
                     Em:text;
-                    BI:BigInteger;
+
                 begin
+                    //CU1.Process_Out_Of_Stock_Shopify_Items();
+                    //exit;
+                    //Cu.Fix_con();
+                    Cu.Fix_Shopify_Dates();
+                    Exit;
                     //pg.LookupMode := true;
                     //Pg.SetApplyType(1);
                     //If Pg.RunModal() = Action::LookupOK then
@@ -538,8 +554,8 @@ pageextension 80000 "PC Sales & Rec Setup Ext" extends "Sales & Receivables Setu
                     Exit;
                     //Excp.Reset;
                     //if Excp.Findset then Excp.DeleteAll();
-                    Evaluate(BI,'4664639651950');
-                    Cu1.Get_Shopify_Orders(BI,0);
+                    //Evaluate(BI,'4664639651950');
+                    //Cu1.Get_Shopify_Orders(BI,0);
                     Exit;
                     Pg.LookupMode := True;
                     If Pg.RunModal() = Action::LookupOK then

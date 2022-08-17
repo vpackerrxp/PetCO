@@ -134,6 +134,10 @@ page 80011 "PC Supplier Brand Rebates"
                 {
                     ApplicationArea = All;
                 }
+                field("Rebate Supplier No.";rec."Rebate Supplier No.")
+                {
+                    ApplicationArea = All;
+                }
                 field(Brand; rec.Brand)
                 {
                     ApplicationArea = All;
@@ -226,7 +230,8 @@ page 80011 "PC Supplier Brand Rebates"
                                     Win.update(1,Ven."No.");
                                     Win.Update(2,Item.Brand);
                                     SupReb.init;
-                                    SupReb."Supplier No." := Ven."No.";   
+                                    SupReb."Supplier No." := Ven."No.";
+                                    SupReb."Rebate Supplier No." := Ven."No.";   
                                     SupReb.Brand := Item.Brand;
                                     SupReb."Rebate Start Date Period" := Dat;
                                     SupReb."Rebate Status" := SupReb."Rebate Status"::Open;
@@ -246,6 +251,7 @@ page 80011 "PC Supplier Brand Rebates"
                                     Win.Update(2,Item.Brand);
                                     SupReb.init;
                                     SupReb."Supplier No." := ItemVen."Vendor No.";   
+                                    SupReb."Rebate Supplier No." := ItemVen."Vendor No.";   
                                     SupReb.Brand := Item.Brand;
                                     SupReb."Rebate Start Date Period" := Dat;
                                     SupReb."Rebate Status" := SupReb."Rebate Status"::Open;
@@ -279,6 +285,15 @@ page 80011 "PC Supplier Brand Rebates"
     begin
         SetFilters();
     end;
+    trigger OnAfterGetRecord()
+    Begin
+        If (Rec."Supplier No." <> '') and (Rec."Rebate Supplier No." = '') then
+        begin
+            Rec."Rebate Supplier No." := Rec."Supplier No.";
+            Rec.Modify();
+        end;
+    End;
+
     Var
         Supp:Code[20];
         Bran:Code[30];

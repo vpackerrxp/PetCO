@@ -38,6 +38,10 @@ tableextension 80003 "PC Sales Credit Note Ext"  extends "Sales Cr.Memo Line"
                         WHERE ("Shopify Order ID"=field("Shopify Order ID")));
             Editable = false;
         }
+        field(80011;"Shopify Order Date";Date)
+        {
+           Editable = false;
+        }
         field(80100;"Supplier No.";Code[20])
         {
             FieldClass = FlowField;

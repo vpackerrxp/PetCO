@@ -213,7 +213,7 @@ pageextension 80001 "PC Item Card Ext" extends "Item Card"
                                 begin
                                     Rec."Shopify Update Flag" := True;
                                     Rec.Modify(false);    
-                                    Cu.Process_Items(Rec."No.");
+                                    Cu.Process_Shopify_Items(Rec."No.");
                                 end;    
                             end        
                             else
@@ -221,7 +221,7 @@ pageextension 80001 "PC Item Card Ext" extends "Item Card"
                                 // now check that this is a standalone ie Not a Child any more
                                 Rel.Setrange("Parent Item No.");
                                 Rel.Setrange("Child Item No.",rec."No.");
-                                If Not Rel.findset then Cu.Process_Items(Rec."No.")    
+                                If Not Rel.findset then Cu.Process_Shopify_Items(Rec."No.")    
                             end;        
                             Currpage.Update(False);
                         end;
@@ -322,13 +322,13 @@ pageextension 80001 "PC Item Card Ext" extends "Item Card"
                         If Flg then
                         begin 
                             If Confirm('Synchronise Item with Shopify Now?',True) then
-                                cu.Process_Items(rec."No.");
+                                cu.Process_Shopify_Items(rec."No.");
                         end         
                         else
                             Message('Only valid for shopify parents/stand alone items');
                     end;
                 } 
-                 action(Msg2)
+                action(Msg2)
                 {
                     ApplicationArea = All;
                     Caption = 'Access Shopify ID';
@@ -342,6 +342,25 @@ pageextension 80001 "PC Item Card Ext" extends "Item Card"
                             2:Clear(Flg4);
                         end;
                         CurrPage.Update(false);
+                    end;
+                }
+                action(Msg3)
+                {
+                    ApplicationArea = All;
+                    Caption = 'Publish/Unpublish Item';
+                    Image = Change;
+                    Promoted = true;
+                    PromotedCategory = Category9;
+                    trigger OnAction()
+                    var
+                        Cu:Codeunit "PC Shopify Routines";
+                    begin
+                        If Rec."Shopify Product ID" > 0 then
+                            Case Strmenu('Publish Item,UnPublish Item') of
+                                0:Exit;
+                                1:Cu.Publish_UnPblish_Shopify_Items(Rec."No.",True);
+                                2:Cu.Publish_UnPblish_Shopify_Items(Rec."No.",False);
+                            end;    
                     end;
                 }
             }   

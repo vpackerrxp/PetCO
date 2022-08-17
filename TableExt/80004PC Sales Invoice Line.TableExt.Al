@@ -46,7 +46,23 @@ tableextension 80004 "PC Sales Invoice Line Ext"  extends "Sales Invoice Line"
                         WHERE ("Shopify Order ID"=field("Shopify Order ID")));
             Editable = false;
         }
-          field(80100;"Supplier No.";Code[20])
+        field(80011;"Shopify Order Date";Date)
+        {
+           Editable = false;
+        }
+        field(80012;"Campaign Rebate";boolean)
+        {
+           Editable = false;
+        }
+        field(80013;"Campaign Rebate Supplier";Code[20])
+        {
+           Editable = false;
+        }   
+        field(80014;"Auto Delivery Rebate Supplier";Code[20])
+        {
+           Editable = false;
+        }
+        field(80100;"Supplier No.";Code[20])
         {
             FieldClass = FlowField;
             CalcFormula = lookup(Item."Vendor No."

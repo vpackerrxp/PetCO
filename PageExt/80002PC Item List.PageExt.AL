@@ -42,7 +42,7 @@ pageextension 80002 "PC Item List Ext" extends "Item List"
                     var
                         cu:Codeunit "PC Shopify Routines";
                     begin
-                        If Confirm('Synchronise All Shopify Items Now?',True) then cu.Process_Items('');
+                        If Confirm('Synchronise All Shopify Items Now?',True) then cu.Process_Shopify_Items('');
                     end;
                 }
                 action(Msg1A)
@@ -72,13 +72,29 @@ pageextension 80002 "PC Item List Ext" extends "Item List"
                             Temp.Reset;         
                             If Temp.Findset then
                             repeat
-                                Cu.Process_Items(Temp."No.");  
+                                Cu.Process_Shopify_Items(Temp."No.");  
                             until temp.Next = 0;
                             rec.Reset;
                             CurrPage.update(false);
                         end;
                    end;
-                }       
+                } 
+                action(Msg1B)
+                {
+                    ApplicationArea = all;
+                    Caption = 'Synchronise Out Of Stock Shopify Items';
+                    Image = Change;
+                    Promoted = true;
+                    PromotedCategory = Category11;
+                    ToolTip = 'Sychronises Out Of Stock Items.';
+                    trigger OnAction()
+                    var
+                        cu:Codeunit "PC Shopify Routines";
+                    begin
+                        If Confirm('Synchronise Out Of Stock Shopify Items Now?',True) then 
+                            cu.Process_Out_Of_Stock_Shopify_Items();
+                    end;
+                }
                 Action(Msg2)
                 {
                     ApplicationArea = all;

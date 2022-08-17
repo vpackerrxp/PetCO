@@ -11,7 +11,7 @@ codeunit 80000 "PC Shopify Routines"
         i:Integer;
     begin
         Log.LockTable();
-        For i:= 1 to 3 do
+        For i:= 1 to 4 do
         begin    
             Log.init;
             Clear(Log.ID);
@@ -22,20 +22,28 @@ codeunit 80000 "PC Shopify Routines"
                 1:
                 begin
                     Log."Operation" := 'Synchronise Shopify Items';
-                    If Process_Items('') then
+                    If Process_Shopify_Items('') then
                         Log.Status := Log.Status::Pass
                     else
                         log."Error Message" := CopyStr(GetLastErrorText,1,250);
                 end;
                 2:
                 begin
+                    Log."Operation" := 'Out Of Stock Shopify Items';
+                    If Process_Out_Of_Stock_Shopify_Items() then
+                        Log.Status := Log.Status::Pass
+                    else
+                        log."Error Message" := 'Failed to retrieve Fulfilo Stock';
+                end;
+                3:
+                begin
                     Log."Operation" := 'Retrieve Shopify Orders';
                     if Get_Shopify_Orders(0,0) then
                         Log.Status := Log.Status::Pass
                     else
                        log."Error Message" := CopyStr(GetLastErrorText,1,250);
-               end;
-                3:
+                end;
+                4:
                 begin
                     Log."Operation" := 'Process Shopify Orders';
                     If Process_Orders(false,0) then 
@@ -255,8 +263,10 @@ codeunit 80000 "PC Shopify Routines"
         Item:record Item;
         Rel:record "PC Shopify Item Relations";
         Filt:text;
+        Wind:Dialog;
     Begin
-        // See if email alerts required for a price change or not
+        if GuiAllowed then Wind.Open('Refreshing Product Sell Prices');
+         // See if email alerts required for a price change or not
         Check_For_Price_Change();
         Clear(Filt);
         if ItemNo <> '' then
@@ -291,7 +301,8 @@ codeunit 80000 "PC Shopify Routines"
             Item.Modify(False);
         until Item.next = 0;    
         Commit;
-    End;
+        if GuiAllowed then Wind.Close;
+   End;
 
     // Checks to ensure the Variants are aligned properly to the parent 
     local Procedure Check_Product_Structure(Var Item:Record Item)
@@ -338,9 +349,118 @@ codeunit 80000 "PC Shopify Routines"
             until Rel.Next = 0;
         end;
     end; 
-   
-    //rountine to Process Item transfers to shopify
-    procedure Process_Items(ItemFilt:Code[20]):Boolean
+    local procedure Build_Shopify_Parents(ItemFilt:Code[20])
+    var
+        Item:Record Item;
+        JsObj:jsonObject;
+        JsObj1:jsonObject;
+        JsArry:jsonArray;
+        Data:JsonObject;
+        JsToken:array[2] of JsonToken;
+        PayLoad:text;
+        Parms:Dictionary of [text,text];
+        wind:Dialog;
+        Rel:record "PC Shopify Item Relations";
+        i:Integer;
+        Flg:Boolean;
+        ItTxt:text;
+        Log:record "PC Shopify Update Log";
+    begin
+        Item.reset;
+        If Itemfilt <> '' then
+            Item.Setrange("No.",ItemFilt);
+        Item.Setrange("Shopify Update Flag",True);
+        Item.Setrange("Shopify Item",Item."Shopify Item"::Shopify);
+        If Item.FindSet() then
+        repeat
+            Rel.Reset();
+            Rel.Setrange("Parent Item No.",Item."No.");
+            If Rel.FindSet() then 
+                rel.Modifyall("Update Required",true,false);
+            Clear(Item."Shopify Update Flag");
+            Item.Modify(False);
+        until Item.Next = 0;
+        Commit;
+        // start by doing any brand new items
+        If GuiAllowed then  Wind.Open('Creating Shopify Item #1################');
+        Clear(JsObj);
+        Clear(Jsobj1);
+        Clear(Parms);
+        Item.reset;
+        If Itemfilt <> '' then
+            Item.Setrange("No.",ItemFilt);
+        Item.Setrange("Shopify Item",Item."Shopify Item"::Shopify);
+        // ensure they have a title always
+        Item.Setfilter("Shopify Title",'<>%1','');
+        Item.SetRange("Shopify Product ID",0); 
+        If Item.findset then
+        repeat
+            Clear(Jsobj);
+            Clear(Jsobj1);
+            // ensure it's not a child item
+            Flg := True; 
+            Rel.Reset();
+            Rel.Setrange("Child Item No.",Item."No.");
+            If Not Rel.findset then
+            begin
+                ItTxt :=  Item."No.";
+                // see if this is a parent but has no item relations defined
+                If ItTxt.StartsWith('PAR-') then
+                begin
+                    Rel.reset;
+                    Rel.Setrange("Parent Item No.",Item."No.");
+                    Flg := Rel.findset;
+                end;
+                If Flg then
+                begin    
+                    // see if this is a parent without any children
+                    Rel.reset;
+                    Rel.Setrange("Parent Item No.",Item."No.");
+                    If Rel.Findset then Flg := Rel.Count > 0;
+                end; 
+                If Flg then
+                begin
+                    If GuiAllowed then Wind.Update(1,Item."No."); 
+                    JsObj.Add('title',Item."Shopify Title");
+                    JsObj.Add('status','active');
+                    Clear(Jsobj1);
+                    JsObj1.Add('product',JsObj);
+                    JsObj1.WriteTo(PayLoad);
+                    If Shopify_Data(Paction::POST,ShopifyBase + 'products.json',Parms,Payload,Data) then
+                    Begin
+                        Data.Get('product',JsToken[1]);
+                        JsToken[1].AsObject().SelectToken('variants',JsToken[2]);
+                        JsArry := jstoken[2].AsArray(); 
+                        JsArry.Get(0,JsToken[1]);       
+                        Jstoken[1].SelectToken('product_id',JsToken[2]);
+                        Item."Shopify Product ID" := JsToken[2].AsValue().AsBigInteger();
+                        Jstoken[1].SelectToken('id',JsToken[2]);
+                        Item."Shopify Product Variant ID" := JsToken[2].AsValue().AsBigInteger();
+                        Jstoken[1].SelectToken('inventory_item_id',JsToken[2]);
+                        Item."Shopify Product Inventory ID" := JsToken[2].AsValue().AsBigInteger();
+                        Item."CRM Shopify Product ID" := Item."Shopify Product ID"; 
+                        Item."Shopify Transfer Flag" := true;  // flag the creation of a new Item
+                        Item."Shopify Publish Flag" := True;  // flag as a new Item 
+                        Item."Is In Shopify Flag" := True;
+                        Clear(Item."Is Child Flag");
+                        Rel.reset;
+                        Rel.Setrange("Parent Item No.",Item."No.");
+                        If Rel.Findset then 
+                        Begin
+                            rel.Modifyall("Update Required",true,false);
+                            Item."Purchasing Blocked" := true;
+                        end;    
+                        item.modify(false);
+                    end
+                    else
+                        Update_Error_Log(StrSubstNo('Failed to create item %1 in Shopify',Item."No."));
+                end;
+            end;        
+        until Item.next = 0;
+        Commit;
+        If GuiAllowed then wind.Close();
+    end;
+    local procedure Build_Shopify_Children(ItemFilt:Code[20])
     var
         Item:array[2] of Record Item;
         JsObj:jsonObject;
@@ -355,125 +475,12 @@ codeunit 80000 "PC Shopify Routines"
         i:Integer;
         price:Decimal;
         Flg:Boolean;
-        ItTxt:text;
         Log:record "PC Shopify Update Log";
         ItemUnit:record "Item Unit of Measure";
-        ItemNo:Code[20];
-        PCost:record "PC Purchase Pricing";
-        Cst:Decimal;
-        Supp:code[20];
-        SReb:record "PC Supplier Brand Rebates";
     begin
-        // prep for any changes to parents
-        if GuiAllowed then Wind.Open('Refreshing Product Sell Prices');
-        Refresh_Product_Pricing(ItemFilt);
-        Item[1].reset;
-        If Itemfilt <> '' then
-            Item[1].Setrange("No.",ItemFilt);
-        Item[1].Setrange("Shopify Update Flag",True);
-        Item[1].Setrange("Shopify Item",Item[1]."Shopify Item"::Shopify);
-        If Item[1].FindSet() then
-        repeat
-            Rel.Reset();
-            Rel.Setrange("Parent Item No.",Item[1]."No.");
-            If Rel.FindSet() then 
-                rel.Modifyall("Update Required",true,false);
-            Clear(Item[1]."Shopify Update Flag");
-            Item[1].Modify(False);
-        until Item[1].Next = 0;
-        Commit;
-        // start by doing any brand new items
         If GuiAllowed then 
-        begin
-            Wind.Close;
-            Wind.Open('Creating Shopify Item #1################');
-        end;    
-        Clear(JsObj);
-        Clear(Jsobj1);
-        Clear(Parms);
-        Item[1].reset;
-        If Itemfilt <> '' then
-            Item[1].Setrange("No.",ItemFilt);
-        Item[1].Setrange("Shopify Item",Item[1]."Shopify Item"::Shopify);
-        // ensure they have a title always
-        Item[1].Setfilter("Shopify Title",'<>%1','');
-        Item[1].SetRange("Shopify Product ID",0); 
-        If Item[1].findset then
-        repeat
-            Clear(Jsobj);
-            Clear(Jsobj1);
-            // ensure it's not a child item
-            Flg := True; 
-            Rel.Reset();
-            Rel.Setrange("Child Item No.",Item[1]."No.");
-            If Not Rel.findset then
-            begin
-                ItTxt :=  Item[1]."No.";
-                // see if this is a parent but has no item relations defined
-                If ItTxt.StartsWith('PAR-') then
-                begin
-                    Rel.reset;
-                    Rel.Setrange("Parent Item No.",Item[1]."No.");
-                    Flg := Rel.findset;
-                end;
-                If Flg then
-                begin    
-                    // see if this is a parent without any children
-                    Rel.reset;
-                    Rel.Setrange("Parent Item No.",Item[1]."No.");
-                    If Rel.Findset then Flg := Rel.Count > 0;
-                end; 
-                If Flg then
-                begin
-                    If GuiAllowed then Wind.Update(1,Item[1]."No."); 
-                    JsObj.Add('title',Item[1]."Shopify Title");
-                   // JsObj.Add('body_html',Item[1]."Shopify Body Html");
-                   // JsObj.Add('vendor',Item[1]."Vendor No.");
-                   // JsObj.Add('product_type',Item[1]."Item Category Code");
-                    JsObj.Add('status','active');
-                    Clear(Jsobj1);
-                    JsObj1.Add('product',JsObj);
-                    JsObj1.WriteTo(PayLoad);
-                    If Shopify_Data(Paction::POST,ShopifyBase + 'products.json',Parms,Payload,Data) then
-                    Begin
-                        Data.Get('product',JsToken[1]);
-                        JsToken[1].AsObject().SelectToken('variants',JsToken[2]);
-                        JsArry := jstoken[2].AsArray(); 
-                        JsArry.Get(0,JsToken[1]);       
-                        Jstoken[1].SelectToken('product_id',JsToken[2]);
-                        Item[1]."Shopify Product ID" := JsToken[2].AsValue().AsBigInteger();
-                        Jstoken[1].SelectToken('id',JsToken[2]);
-                        Item[1]."Shopify Product Variant ID" := JsToken[2].AsValue().AsBigInteger();
-                        Jstoken[1].SelectToken('inventory_item_id',JsToken[2]);
-                        Item[1]."Shopify Product Inventory ID" := JsToken[2].AsValue().AsBigInteger();
-                        Item[1]."CRM Shopify Product ID" := Item[1]."Shopify Product ID"; 
-                        Item[1]."Shopify Transfer Flag" := true;  // flag the creation of a new Item
-                        Item[1]."Shopify Publish Flag" := True;  // flag as a new Item 
-                        Item[1]."Is In Shopify Flag" := True;
-                        Clear(Item[1]."Is Child Flag");
-                        Rel.reset;
-                        Rel.Setrange("Parent Item No.",Item[1]."No.");
-                        If Rel.Findset then 
-                        Begin
-                            rel.Modifyall("Update Required",true,false);
-                            Item[1]."Purchasing Blocked" := true;
-                        end;    
-                        item[1].modify(false);
-                     end
-                    else
-                        Update_Error_Log(StrSubstNo('Failed to create item %1 in Shopify',Item[1]."No."));
-                end;
-            end;        
-        until Item[1].next = 0;
-        Commit;
-        If GuiAllowed then 
-        begin
-            wind.Close();
             Wind.open('Updating Shopify Item           #1#################\'
                      +'Creating/Updating Shopify Child #2#################');
-        end;
-        //now we do the items that exist by updating the created/updating Product Variant
-        //no need to worry about title now 
         Item[1].Reset;
         If Itemfilt <> '' then
             Item[1].Setrange("No.",ItemFilt);
@@ -611,32 +618,46 @@ codeunit 80000 "PC Shopify Routines"
             end;
             Commit;
         Until Item[1].next = 0;
-        If GuiAllowed then 
-        begin
-            wind.Close();
-            Wind.open('Checking Inventory Product ID #1##################');
-        end;
-        If Itemfilt = '' then
+        If GuiAllowed then Wind.Close;
+    end;
+    local procedure Build_Shopify_Item_Costs(ItemFilt:Code[20])
+    var
+        Item:Record Item;
+        JsObj:jsonObject;
+        JsObj1:jsonObject;
+        JsArry:jsonArray;
+        Data:JsonObject;
+        JsToken:array[2] of JsonToken;
+        PayLoad:text;
+        Parms:Dictionary of [text,text];
+        wind:Dialog;
+        PCost:record "PC Purchase Pricing";
+        Cst:Decimal;
+        Supp:code[20];
+        SReb:record "PC Supplier Brand Rebates";
+    begin
+       If GuiAllowed then Wind.open('Checking Inventory Product ID #1##################');
+       If Itemfilt = '' then
         Begin
             Clear(Parms);
-            Item[1].Reset;
-            Item[1].Setrange("Shopify Item",Item[1]."Shopify Item"::Shopify);
-            Item[1].Setrange(Type,Item[1].Type::Inventory);
-            Item[1].Setfilter("Shopify Product Variant ID",'>0');
-            Item[1].SetRange("Shopify Product Inventory ID",0);
-            If Item[1].findset then
+            Item.Reset;
+            Item.Setrange("Shopify Item",Item."Shopify Item"::Shopify);
+            Item.Setrange(Type,Item.Type::Inventory);
+            Item.Setfilter("Shopify Product Variant ID",'>0');
+            Item.SetRange("Shopify Product Inventory ID",0);
+            If Item.findset then
             repeat
-                if GuiAllowed then wind.update(1,Item[1]."No.");
-                If Shopify_Data(Paction::GET,ShopifyBase +'variants/'+ Format(Item[1]."Shopify Product Variant ID") + '.json'
+                if GuiAllowed then wind.update(1,Item."No.");
+                If Shopify_Data(Paction::GET,ShopifyBase +'variants/'+ Format(Item."Shopify Product Variant ID") + '.json'
                                     ,Parms,Payload,Data) Then
                     if Data.get('variant',JsToken[1]) then
                         If JsToken[1].SelectToken('inventory_item_id',JsToken[2]) then
                             If not JsToken[2].AsValue().IsNull then
                             begin
-                                Item[1]."Shopify Product Inventory ID" := JsToken[2].AsValue().AsBigInteger();
-                                Item[1].Modify(false);     
+                                Item."Shopify Product Inventory ID" := JsToken[2].AsValue().AsBigInteger();
+                                Item.Modify(false);     
                             end;    
-            until Item[1].next = 0;
+            until Item.next = 0;
             Commit;
             If GuiAllowed then 
             begin
@@ -644,18 +665,18 @@ codeunit 80000 "PC Shopify Routines"
                 Wind.open('Updating Item Costs  #1##################');
             end;
             Clear(Parms);
-            Item[1].Reset;
-            Item[1].Setrange("Shopify Item",Item[1]."Shopify Item"::Shopify);
-            Item[1].Setrange(Type,Item[1].Type::Inventory);
-            Item[1].Setfilter("Shopify Product Inventory ID",'>0');
-            If Item[1].findset then
+            Item.Reset;
+            Item.Setrange("Shopify Item",Item."Shopify Item"::Shopify);
+            Item.Setrange(Type,Item.Type::Inventory);
+            Item.Setfilter("Shopify Product Inventory ID",'>0');
+            If Item.findset then
             repeat
-                Cst := Item[1]."Unit Cost";
+                Cst := Item."Unit Cost";
                 If Cst = 0 then
                 begin
                     Cst := 99999;
                     PCost.reset;
-                    PCost.Setrange("Item No.",Item[1]."No.");
+                    PCost.Setrange("Item No.",Item."No.");
                     If PCost.findset then
                     repeat
                         If PCost."Unit Cost" < Cst then
@@ -668,7 +689,7 @@ codeunit 80000 "PC Shopify Routines"
                     begin
                         SReb.reset;
                         SReb.Setrange("Supplier No.",Supp);
-                        SReb.Setrange(Brand,Item[1].Brand);
+                        SReb.Setrange(Brand,Item.Brand);
                         Sreb.SetRange("Rebate Status",Sreb."Rebate Status"::Open);
                         If SReb.FindSet() then
                             Cst -= (Cst*Sreb."Marketing Rebate %"/100 + Cst* SReb."Supply Chain Rebate %"/100 
@@ -677,25 +698,115 @@ codeunit 80000 "PC Shopify Routines"
                 end;    
                 If Cst < 99999 then
                 begin
-                    If GuiAllowed then wind.Update(1,Item[1]."No.");
+                    If GuiAllowed then wind.Update(1,Item."No.");
                     Clear(Jsobj);
                     Clear(JsObj1);
-                    JsObj.Add('id',Item[1]."Shopify Product Inventory ID");
+                    JsObj.Add('id',Item."Shopify Product Inventory ID");
                     JsObj.Add('cost',format(Cst * 1.1,0,'<Precision,2><Standard Format,1>'));
                     JsObj1.Add('inventory_item',JsObj);
                     JsObj1.WriteTo(PayLoad);
                     Shopify_Data(Paction::PUT,
-                                ShopifyBase +'inventory_items/'+ Format(Item[1]."Shopify Product Inventory ID") + '.json'
+                                ShopifyBase +'inventory_items/'+ Format(Item."Shopify Product Inventory ID") + '.json'
                                 ,Parms,Payload,Data); 
                 end;
-            until Item[1].next = 0;
+            until Item.next = 0;
         end;
+        if GuiAllowed then Wind.close;
+    end;
+    local procedure Unpublish_Shopify_Items(ItemFilt:Code[20])
+    var
+        Item:Record Item;
+        JsObj:jsonObject;
+        JsObj1:jsonObject;
+        JsArry:jsonArray;
+        Data:JsonObject;
+        JsToken:array[2] of JsonToken;
+        PayLoad:text;
+        Parms:Dictionary of [text,text];
+        wind:Dialog;
+        Log:record "PC Shopify Update Log";
+    begin
+        If GuiAllowed then Wind.open('Unpublishing Shopify Item #1#################');
+        Item.Reset;
+        Item.Setrange("Shopify Item",Item."Shopify Item"::Shopify);
+        If Itemfilt <> '' then
+            Item.Setrange("No.",ItemFilt);
+        Item.Setfilter("Shopify Product ID",'>0');
+        Item.Setrange("Shopify Publish Flag",True);
+        If Item.findset then
+        repeat
+            If GuiAllowed then Wind.Update(1,Item."No.");
+            Clear(Jsobj);
+            Clear(Jsobj1);
+            JsObj.Add('id',Item."Shopify Product ID");
+            JsObj.Add('published',False);
+            jsObj1.Add('product',JsObj);
+            JsObj1.WriteTo(PayLoad);
+            if Not Shopify_Data(Paction::PUT,
+                       ShopifyBase + 'products/'+ Format(Item."Shopify Product ID") + '.json'
+                            ,Parms,Payload,Data) then
+                Update_Error_Log(StrSubstNo('Failed to Unpublish Parent Item %1 Using Product ID %2'
+                                                ,Item."No.",Item."Shopify Product ID"));              
+        until Item.Next = 0;
+        If GuiAllowed then Wind.Close; 
+    end;
+    procedure Publish_UnPblish_Shopify_Items(ItemFilt:Code[20];PubCtrl:boolean)
+    var
+        Item:Record Item;
+        JsObj:jsonObject;
+        JsObj1:jsonObject;
+        JsArry:jsonArray;
+        Data:JsonObject;
+        JsToken:array[2] of JsonToken;
+        PayLoad:text;
+        Parms:Dictionary of [text,text];
+        wind:Dialog;
+        Log:record "PC Shopify Update Log";
+    begin
+        Item.Reset;
+        Item.Setrange("Shopify Item",Item."Shopify Item"::Shopify);
+        If Itemfilt <> '' then
+            Item.Setrange("No.",ItemFilt);
+        Item.Setfilter("Shopify Product ID",'>0');
+        If Item.findset then
+        Begin
+            Clear(Jsobj);
+            Clear(Jsobj1);
+            JsObj.Add('id',Item."Shopify Product ID");
+            JsObj.Add('published',PubCtrl);
+            jsObj1.Add('product',JsObj);
+            JsObj1.WriteTo(PayLoad);
+            if Not Shopify_Data(Paction::PUT,
+                       ShopifyBase + 'products/'+ Format(Item."Shopify Product ID") + '.json'
+                            ,Parms,Payload,Data) then
+                Update_Error_Log(StrSubstNo('Failed to Unpublish Parent Item %1 Using Product ID %2'
+                                                ,Item."No.",Item."Shopify Product ID"));
+            Item."Shopify Publish Flag" := Not PubCtrl;
+            Item.modify(False);
+        end;
+    end;    
+    local procedure Organise_Shopify_Items(ItemFilt:Code[20])
+    var
+        Item:array[2] of Record Item;
+        JsObj:jsonObject;
+        JsObj1:jsonObject;
+        JsArry:jsonArray;
+        Data:JsonObject;
+        JsToken:array[2] of JsonToken;
+        PayLoad:text;
+        Parms:Dictionary of [text,text];
+        wind:Dialog;
+        ItTxt:text;
+        Rel:record "PC Shopify Item Relations";
+        i:Integer;
+        price:Decimal;
+        Flg:Boolean;
+        Log:record "PC Shopify Update Log";
+        ItemUnit:record "Item Unit of Measure";
+    begin
         If GuiAllowed then 
-        begin
-            wind.Close();
             Wind.open('Updating Shopify Parent    #1##################\'
                      +'Organising Shopify Child   #2##################');
-        end;
         Clear(Parms);
         Item[1].Reset;
         If Itemfilt <> '' then
@@ -765,69 +876,195 @@ codeunit 80000 "PC Shopify Routines"
             Rel.Setrange("Parent Item No.",Item[1]."No.");
             If Rel.findset then Rel.ModifyAll("Update Required",false,false);
         Until Item[1].next = 0;
-        // here we unpublish created items
-        If GuiAllowed then
-        begin 
-            Wind.Close; 
-            Wind.open('Unpublishing Shopify Item #1#################');
-        end;    
-        Item[1].Reset;
-        Item[1].Setrange("Shopify Item",Item[1]."Shopify Item"::Shopify);
-        If Itemfilt <> '' then
-            Item[1].Setrange("No.",ItemFilt);
-        Item[1].Setfilter("Shopify Product ID",'>0');
-        Item[1].Setrange("Shopify Publish Flag",True);
-        If Item[1].findset then
-        repeat
-            If GuiAllowed then Wind.Update(1,Item[1]."No.");
-            Clear(Jsobj);
-            Clear(Jsobj1);
-            JsObj.Add('id',Item[1]."Shopify Product ID");
-            JsObj.Add('published',false);
-            jsObj1.Add('product',JsObj);
-            JsObj1.WriteTo(PayLoad);
-            if Not Shopify_Data(Paction::PUT,
-                       ShopifyBase + 'products/'+ Format(Item[1]."Shopify Product ID") + '.json'
-                            ,Parms,Payload,Data) then
-                Update_Error_Log(StrSubstNo('Failed to Unpublish Parent Item %1 Using Product ID %2'
-                                                ,Item[1]."No.",Item[1]."Shopify Product ID"));              
-        until Item[1].Next = 0;
-        If GuiAllowed then
-        begin 
-            Wind.Close; 
-            Wind.open('Refreshing Shopify Item #1#################');
-        end;    
+        If GuiAllowed then Wind.Close;
+    end;
+    local procedure Update_Shopify_Items_Key_Info(ItemFilt:Code[20])
+    var
+        Item:Record Item;
+        JsObj:jsonObject;
+        JsObj1:jsonObject;
+        JsArry:jsonArray;
+        Data:JsonObject;
+        JsToken:array[2] of JsonToken;
+        PayLoad:text;
+        Parms:Dictionary of [text,text];
+        wind:Dialog;
+        Log:record "PC Shopify Update Log";
+    begin
+        If GuiAllowed then Wind.open('Refreshing Shopify Item #1#################');
         // update any changes to titles etc
-        Item[1].Reset;
-        Item[1].Setrange("Shopify Item",Item[1]."Shopify Item"::Shopify);
+        Item.Reset;
+        Item.Setrange("Shopify Item",Item."Shopify Item"::Shopify);
         If Itemfilt <> '' then
-            Item[1].Setrange("No.",ItemFilt);
-        Item[1].Setfilter("Shopify Product ID",'>0');
-        Item[1].Setrange("Key Info Changed Flag",true);
-        If Item[1].findset then
+            Item.Setrange("No.",ItemFilt);
+        Item.Setfilter("Shopify Product ID",'>0');
+        Item.Setrange("Key Info Changed Flag",true);
+        If Item.findset then
         repeat
-            if GuiAllowed Then Wind.Update(1,Item[1]."No.");
+            if GuiAllowed Then Wind.Update(1,Item."No.");
             Clear(Jsobj);
             Clear(Jsobj1);
-            JsObj.Add('id',Item[1]."Shopify Product ID");
-            JsObj.Add('title',Item[1]."Shopify Title");
+            JsObj.Add('id',Item."Shopify Product ID");
+            JsObj.Add('title',Item."Shopify Title");
             jsObj1.Add('product',JsObj);
             JsObj1.WriteTo(PayLoad);
             If Shopify_Data(Paction::PUT,
-                       ShopifyBase + 'products/'+ Format(Item[1]."Shopify Product ID") + '.json'
+                       ShopifyBase + 'products/'+ Format(Item."Shopify Product ID") + '.json'
                             ,Parms,Payload,Data) then
             begin                
-                Clear(Item[1]."Key Info Changed Flag");
-                Item[1].Modify(False);
+                Clear(Item."Key Info Changed Flag");
+                Item.Modify(False);
             end
             else
                 Update_Error_Log(StrSubstNo('Failed to Refresh Key Info for Parent Item %1 Using Product ID %2'
-                                                                    ,Item[1]."No.",Item[1]."Shopify Product ID"));                      
-        until Item[1].Next = 0;
-        If GuiAllowed then Wind.Close;
+                                                                    ,Item."No.",Item."Shopify Product ID"));                      
+        until Item.Next = 0;
+        If GuiAllowed Then Wind.close;
+    end;
+   //rountine to Process Item transfers to shopify
+    procedure Process_Shopify_Items(ItemFilt:Code[20]):Boolean
+    var
+        Log:record "PC Shopify Update Log";
+    begin
+        // prep for any changes to parents
+        Refresh_Product_Pricing(ItemFilt);
+        Build_Shopify_Parents(ItemFilt);
+        Build_Shopify_Children(ItemFilt);    
+        Build_Shopify_Item_Costs(ItemFilt);
+        Organise_Shopify_Items(ItemFilt);    
+        Unpublish_Shopify_Items(ItemFilt);
+        Update_Shopify_Items_Key_Info(ItemFilt);
         Log.reset;
         Log.Setfilter("Error Date/Time",'>=%1',CreateDateTime(Today,0T));
         Exit(Log.Count = 0);   
+    end;
+    procedure Process_Out_Of_Stock_Shopify_Items():Boolean;
+    var
+        Item:Array[2] of record Item;
+        Cu:Codeunit "PC Fulfilio Routines";
+        Bom:record "BOM Component";
+        FInv:Record "PC Fulfilo Inventory";
+        Rel:record "PC Shopify Item Relations";
+        Data:JsonObject;
+        PayLoad:text;
+        Parms:Dictionary of [text,text];
+        RunFlg:Boolean;
+        Win:Dialog;
+   begin
+        
+        If GuiAllowed then Win.Open('Checking Item   #1#############'
+                                   +'Processing Item #2#############');
+        RunFlg := CU.Build_Fulfilo_Inventory_Levels(); 
+        If RunFlg then
+        begin
+            Item[1].Reset;
+            Item[1].Setrange("Purchasing Blocked",True);
+            Item[1].Setrange(Type,Item[1].Type::Inventory);
+            Item[1].Setrange("Assembly BOM",False);
+            If Item[1].Findset then
+            repeat
+                If GuiAllowed Then Win.update(1,Item[1]."No.");
+                Finv.Reset;
+                Finv.Setrange(SKU,Item[1]."No.");
+                If Finv.Findset then
+                begin
+                    FInv.CalcSums(Qty);
+                    If (Finv.Qty <= 0) AND (Item[1]."Is In Shopify Flag") then
+                    begin
+                        If GuiAllowed Then Win.update(2,Item[1]."No.");
+                        If Delete_Shopify_Child(Item[1]) then
+                        begin
+                            // here we check if the SKU is in a BOM as well 
+                            Bom.Reset;
+                            Bom.Setrange(Type,Bom.Type::Item);
+                            Bom.Setrange("No.",Item[1]."No.");
+                            If Bom.Findset then
+                            begin
+                                Item[2].get(Bom."Parent Item No.");
+                                Delete_Shopify_Child(Item[2]);      
+                            end;
+                        end;    
+                        Rel.Reset;
+                        Rel.Setrange("Child Item No.",Item[1]."No.");
+                        Rel.Setrange("Un Publish Child",false);
+                        If Rel.Findset then
+                        Begin    
+                            Rel."Un Publish Child" := True;
+                            Rel.Modify(True);
+                            Clear(Item[1]."Shopify Product Variant ID");
+                            Clear(Item[1]."Is In Shopify Flag");
+                            Item[1]."Shopify Transfer Flag" := true;
+                            Item[1].Modify(False);
+                        End;
+                        Commit;
+                        Rel.Setrange("Un Publish Child",True);
+                        If Rel.Findset then
+                        begin
+                            Bom.Reset;
+                            Bom.Setrange(Type,Bom.Type::Item);
+                            Bom.Setrange("No.",Item[1]."No.");
+                            If Bom.Findset then
+                            begin
+                                Rel.Reset;
+                                Rel.Setrange("Child Item No.",Bom."Parent Item No.");
+                                Rel.Setrange("Un Publish Child",false);
+                                If Rel.Findset then
+                                begin
+                                    Rel."Un Publish Child" := True;
+                                    Rel.Modify(True);
+                                    Item[2].get(Bom."Parent Item No.");
+                                    Clear(Item[2]."Shopify Product Variant ID");
+                                    Clear(Item[2]."Is In Shopify Flag");
+                                    Item[2]."Shopify Transfer Flag" := true;
+                                    Item[2].Modify(False);
+                                end;
+                            end;
+                        end;
+                        Commit;
+                        Clear(Parms);
+                        Clear(PayLoad);
+                        Clear(Data);
+                        Item[2].get(Rel."Parent Item No.");
+                        Item[2].CalcFields("Shopify Child Count");
+                        If (Item[2]."Shopify Child Count" = 0) then
+                        begin 
+                            Shopify_Data(Paction::DELETE,ShopifyBase + 'products/' + Format(Item[2]."Shopify Product ID") + '.json'
+                                        ,Parms,PayLoad,Data);
+                            Clear_Flags(Item[2]);
+                            Clear(Item[2]."Shopify Item");
+                            Item[2].Modify(False);                              
+                        end
+                        else
+                        Begin
+                            Item[2]."Shopify update Flag" := True;
+                            Item[2].Modify(False);
+                            Process_Shopify_Items(rel."Parent Item No.");   
+                        end;
+                    end
+                    //here we see if the item has been returned and needs to be 
+                    //Resetablished
+                    else If (Finv.Qty > 0) And Not (Item[1]."Is In Shopify Flag") then
+                    begin
+                        Rel.Reset;
+                        Rel.Setrange("Child Item No.",Item[1]."No.");
+                        Rel.Setrange("Un Publish Child",True);
+                        If Rel.Findset then
+                        Begin    
+                            If GuiAllowed Then Win.update(2,Item[1]."No.");
+                            Clear(Rel."Un Publish Child");
+                            Rel.Modify(True);
+                            Item[2].Get(Rel."Parent Item No.");
+                            Item[2]."Shopify Item" := Item[2]."Shopify Item"::Shopify;
+                            Item[2]."Shopify update Flag" := True;
+                            Item[2].Modify(False);
+                            Process_Shopify_Items(rel."Parent Item No.");   
+                        end;     
+                    end;    
+                end;         
+            until Item[1].next = 0;
+        end;
+        If GuiAllowed then win.close;
+        Exit(RunFlg);    
     end;
     procedure Check_Product_ID(Item:record Item;var Cnt:integer):Text
     Var 
@@ -860,64 +1097,89 @@ codeunit 80000 "PC Shopify Routines"
                 jstoken[1].SelectToken('sku',JsToken[2]);
                 RetVal += 'SKU -> ' + JsToken[2].AsValue().AsCode();
                 JsToken[1].SelectToken('id',JsToken[2]);
-                RetVal += ' ID  -> ' + Format(JsToken[2].AsValue().AsBigInteger()) + CRLF;
+                RetVal += 'ID  -> ' + Format(JsToken[2].AsValue().AsBigInteger()) + CRLF;
             end
         end
         else
             RetVal := 'Product ID not Found'; 
         exit(RetVal);                          
     End;
-
-/*                
-        // here we do the inventory update
-        Item[1].Setrange("Key Info Changed Flag");             
-        Item[1].SetRange("Shopify Product ID");
-        Item[1].Setfilter("Shopify Product Variant ID",'>0'); 
-        If Item[1].findset then
-        repeat
-            If GuiAllowed then Wind.Update(1,Item[1]."No.");
-            Rel.reset;
-            Rel.Setrange("Parent Item No.",Item[1]."No.");
-            if not rel.FindSet() then
-            begin 
-                If Item[1]."Shopify Location Inventory ID" = 0 then
+    local procedure Delete_Shopify_Child(var Item:Record Item):Boolean
+    var
+        Flg:Boolean;
+        Data:JsonObject;
+        PayLoad:text;
+        Parms:Dictionary of [text,text];
+        Rel:Array[2] of Record "PC Shopify Item Relations";
+        JsObj:jsonObject;
+        JsObj1:jsonObject;
+        JsArry:JsonArray;
+        JsToken:array[2] of JsonToken;
+        Item2:record Item;
+        ItemUnit:record "Item Unit of Measure";
+        i:integer;
+    begin
+        Clear(flg);
+        If Item."CRM Shopify Product ID" > 0 then
+        begin
+            Item2.reset;
+            Item2.Setrange("Shopify Product ID",Item."CRM Shopify Product ID");
+            If Item2.Findset then
+            begin
+                Rel[1].Reset;
+                Rel[1].Setrange("Parent Item No.",Item2."No.");
+                Rel[1].Setrange("Un Publish Child",False);
+                If Rel[1].findset then
                 begin
-                    Clear(Parms);    
-                    Parms.Add('inventory_item_ids',Format(Item[1]."Shopify Product Inventory ID"));
-                    If Shopify_Data(Paction::GET,
-                        '/admin/api/2021-04/inventory_levels.json?'
-                                ,Parms,Payload,Data) then
-                                If Data.Get('inventory_levels',JsToken[2]) then
-                                    if JsToken[2].IsArray then
-                                    begin
-                                        JsArry := jstoken[2].AsArray(); 
-                                        JsArry.Get(0,JsToken[1]);       
-                                        Jstoken[1].SelectToken('location_id',JsToken[2]);
-                                        Item[1]."Shopify Location Inventory ID" := JsToken[2].AsValue().AsBigInteger();
-                                        Item[1]."Is In Shopify Flag" := true;
-                                        item[1].modify(false);
-                                    end;
+                    Clear(Parms);
+                    Clear(Data);
+                    Clear(PayLoad);
+                    If (Item."Shopify Product Variant ID" > 0) 
+                    And (Rel[1].Count > 1) then
+                    begin
+                        Parms.Add('fields','variants');
+                        if Not Shopify_Data(Paction::GET,ShopifyBase + 'products/' + Format(Item."CRM Shopify Product ID") + '.json'
+                                    ,Parms,PayLoad,Data) then
+                            exit(Flg);
+                        Data.Get('product',JsToken[1]);
+                        JsToken[1].SelectToken('variants',jstoken[2]);
+                        JsArry := JsToken[2].AsArray();
+                        for i := 0 to JsArry.Count - 1 do
+                        begin
+                            JsArry.get(i,JsToken[1]);
+                            jstoken[1].SelectToken('sku',JsToken[2]);
+                            if JsToken[2].AsValue().AsCode() = Item."No." then
+                            begin
+                                Clear(Parms);
+                                JsToken[1].SelectToken('id',JsToken[2]);
+                                If Not Shopify_Data(Paction::DELETE,ShopifyBase + 'products/'+ Format(Item."CRM Shopify Product ID") 
+                                                        + '/variants/' + Format(jstoken[2].AsValue().AsBigInteger()) + '.json'
+                                                        ,Parms,Payload,Data) Then
+                                    exit(False)                                                                            
+                                else                                                                                                    
+                                    break;
+                            end;
+                        end;
+                        Clear(Item."Shopify Product Variant ID");
+                        Clear(Item."Is In Shopify Flag");
+                        Item."Shopify Transfer Flag" := true;
+                        Item.Modify(False);
+                        Rel[2].Reset;
+                        Rel[2].Setrange("Parent Item No.",Rel[1]."Parent Item No.");
+                        Rel[2].Setrange("Child Item no.",Item."No.");
+                        if Rel[2].Findset then
+                        begin
+                            Rel[2]."Un Publish Child" := True;
+                            Rel[2].Modify(false);
+                        end;
+                        flg := true;
+                    End;
                 end;
-                If (Item[1]."Shopify Location Inventory ID" > 0) AND
-                   (Item[1]."Shopify Product Inventory ID" > 0)  then
-                begin
-                    Clear(JsObj);
-                    CLear(Parms);
-                    Jsobj.Add('inventory_item_id',Format(Item[1]."Shopify Product Inventory ID"));
-                    JsObj.Add('location_id',Format((Item[1]."Shopify Location Inventory ID")));
-                    Item[1].CalcFields(Inventory);
-                    JsObj.Add('available',Format(Item[1].Inventory));
-                    Jsobj.WriteTo(PayLoad);
-                    If Not Shopify_Data(Paction::POST,
-                               '/admin/api/2021-04/inventory_levels/set.json'
-                                ,Parms,Payload,Data) then
-                        If GuiAllowed then message('Inventory Update Failed');
-                end;    
-            end;                
-        until Item[1].next = 0;
-      
+            end;
+        end;            
+        exit(Flg);
     end;
-    */
+
     procedure Update_Shopify_Child(var Item:Record Item;Act:option Delete,Create):Boolean
     var
         Flg:Boolean;
@@ -958,7 +1220,10 @@ codeunit 80000 "PC Shopify Routines"
                         Parms.Add('fields','variants');
                         if Not Shopify_Data(Paction::GET,ShopifyBase + 'products/' + Format(Item."CRM Shopify Product ID") + '.json'
                                     ,Parms,PayLoad,Data) then
-                            error(strsubstno('Failed to retrieve Item %1 with product ID %2 from shopify',Item."No.",Item."CRM Shopify Product ID"));            
+                        begin 
+                            If GuiAllowed then message(strsubstno('Failed to retrieve Item %1 with product ID %2 from shopify',Item."No.",Item."CRM Shopify Product ID")); 
+                            exit(Flg);
+                        end;    
                         Data.Get('product',JsToken[1]);
                         JsToken[1].SelectToken('variants',jstoken[2]);
                         JsArry := JsToken[2].AsArray();
@@ -977,9 +1242,10 @@ codeunit 80000 "PC Shopify Routines"
                                     Update_Error_Log(StrSubstNo('Failed to delete Item %1 using product Id %2 variant %3 from shopify',Item."No."
                                                                                                                 ,Item."CRM Shopify Product ID"
                                                                                                                 ,jstoken[2].AsValue().AsBigInteger()));
-                                    error(StrSubstNo('Failed to delete Item %1 using product Id %2 variant %3 from shopify',Item."No."
+                                    If GuiAllowed then Message(StrSubstNo('Failed to delete Item %1 using product Id %2 variant %3 from shopify',Item."No."
                                                                                                                 ,Item."CRM Shopify Product ID"
                                                                                                                 ,jstoken[2].AsValue().AsBigInteger()));
+                                    exit(False);                                                                            
                                 end                                                                                
                                 else                                                                                                    
                                     break;
@@ -1046,7 +1312,8 @@ codeunit 80000 "PC Shopify Routines"
                         else
                         begin
                             Update_Error_Log(StrSubstNo('Failed to create Item %1 as a variant in shopify using product ID %2',Item."no.",Item."CRM Shopify Product ID"));
-                            error(StrSubstNo('Failed to create Item %1 as a variant in shopify using product ID %2',Item."no.",Item."CRM Shopify Product ID"));    
+                            If GuiAllowed then Message(StrSubstNo('Failed to create Item %1 as a variant in shopify using product ID %2',Item."no.",Item."CRM Shopify Product ID"));    
+                            exit(false);
                         end;    
                     end;
                 end;
@@ -2000,20 +2267,36 @@ codeunit 80000 "PC Shopify Routines"
         Dat:text;
         i,j:integer;
         Flg:Boolean;
+        InvFlg:Boolean;
     begin
+        Clear(InvFlg);
         JsReftoken.SelectToken('id',Jstoken[2]);
         If Cflg then
-            Flg := Not OrdRec[1].Get(Jstoken[2].AsValue().AsBigInteger(),Ordrec[1]."Shopify Order Type"::Cancelled)
+        begin
+            Flg := Not OrdRec[1].Get(Jstoken[2].AsValue().AsBigInteger(),Ordrec[1]."Shopify Order Type"::Cancelled);
+            InvFlg := OrdRec[1].Get(Jstoken[2].AsValue().AsBigInteger(),Ordrec[1]."Shopify Order Type"::Invoice);
+        end    
         else
+        Begin
             Flg := Not OrdRec[1].Get(Jstoken[2].AsValue().AsBigInteger(),Ordrec[1]."Shopify Order Type"::Invoice);
+            // saftey to ensure the cancelled is not there already
+            If Flg then
+                Flg := Not OrdRec[1].Get(Jstoken[2].AsValue().AsBigInteger(),Ordrec[1]."Shopify Order Type"::Cancelled);
+        end;
         If Flg Then
         begin
-            OrdRec[1].Init();
-            OrdRec[1]."Shopify Order ID" := Jstoken[2].AsValue().AsBigInteger();
-            OrdRec[1]."Shopify Order Type" := OrdRec[1]."Shopify Order Type"::Invoice;
-            If CFlg then
-                OrdRec[1]."Shopify Order Type" := OrdRec[1]."Shopify Order Type"::Cancelled;
-            OrdRec[1].insert;
+            // see if we have the invoice but need to change it to Cancelled
+            If InvFlg then
+                OrdRec[1]."Shopify Order Type" := OrdRec[1]."Shopify Order Type"::Cancelled
+            else
+            begin
+                OrdRec[1].Init();
+                OrdRec[1]."Shopify Order ID" := Jstoken[2].AsValue().AsBigInteger();
+                OrdRec[1]."Shopify Order Type" := OrdRec[1]."Shopify Order Type"::Invoice;
+                If CFlg then
+                    OrdRec[1]."Shopify Order Type" := OrdRec[1]."Shopify Order Type"::Cancelled;
+                OrdRec[1].insert;
+            end;    
             JsReftoken.SelectToken('order_number',Jstoken[2]);
             OrdRec[1]."Shopify Order No" := Jstoken[2].AsValue().AsBigInteger();
             If JsReftoken.SelectToken('processed_at',Jstoken[2]) then
@@ -3116,7 +3399,6 @@ codeunit 80000 "PC Shopify Routines"
             EM.Create(Recip,Subject,Body);
             Exit(Emailer.Send(EM,Enum::"Email Scenario"::Default));
         end;
-  
         exit(false);
     end;
     procedure Send_PO_Email(PurchHdr:record "Purchase Header"):Boolean;
@@ -3158,10 +3440,10 @@ codeunit 80000 "PC Shopify Routines"
             Body += 'Thanks,' + CRLF;
             Body += 'Luken' + CRLF + CRLF;
             Body += 'PetCulture Sales & Operations.' + CRLF + 'www.petculture.com.au';
-            Flg := Doc.EmailFileFromStream(InStrm,PurchHdr."No." + '.pdf',Body,Ven.Name + ' - ' + PurchHdr."No." + ' - ' + PurchHdr."Location Code"
+            Flg := Doc.EmailFileFromStream(InStrm,PurchHdr."No." + '.pdf',Body,Ven.Name.Replace('-','') + ' - ' + PurchHdr."No." + ' - ' + PurchHdr."Location Code"
                     ,Ven."Operations E-Mail",True,-1);
             If Flg and (Setup."PO CC email Address" <> '') then        
-                Flg := Doc.EmailFileFromStream(InStrm,PurchHdr."No." + '.pdf',Body,Ven.Name + ' - ' + PurchHdr."No." + ' - ' + PurchHdr."Location Code"
+                Flg := Doc.EmailFileFromStream(InStrm,PurchHdr."No." + '.pdf',Body,Ven.Name.Replace('-','') + ' - ' + PurchHdr."No." + ' - ' + PurchHdr."Location Code"
                         ,Setup."PO CC email Address",True,-1);
             exit(Flg);    
         end;            
@@ -3186,7 +3468,7 @@ codeunit 80000 "PC Shopify Routines"
     var
         Flds:list of [text]; 
         PurHdr:record "Purchase Header";
-
+        Flg:boolean;
     begin
         Flds := EmailSubject.Split(' - ');
         If Flds.Count > 1 then
@@ -3254,7 +3536,7 @@ codeunit 80000 "PC Shopify Routines"
         If Item.findSet then
         repeat
             Item.CalcFields(Inventory);
-            If Item.Inventory > 0 then Cu.Adjust_QC_Inventory(Item,-Item.Inventory);
+            If Item.Inventory <> 0 then Cu.Adjust_QC_Inventory(Item,-Item.Inventory);
         until Item.next = 0;
     end;
     procedure Credit_Correction(ID:BigInteger)
@@ -3318,6 +3600,73 @@ codeunit 80000 "PC Shopify Routines"
                  end;
             end;     
     end;
+    local procedure Add_Rebate_Entries(var SLine:record "Sales Line";var Lineno:Integer;Var RebateTot:Decimal)
+    var
+        CmpReb:Record "PC Campaign Rebates";
+        CmpSku:record "PC Campaign SKU";
+        SalesLine:Record "Sales Line";
+        i:Integer;
+        RunFlg:Boolean;
+        GLSetup:Record "General Ledger Setup";
+    begin
+        GLSetup.get;
+        For i := 1 to 2 do
+        begin
+            CmpReb.reset;
+            Clear(RunFlg);
+            Case i Of 
+                1:
+                begin
+                    CmpReb.Setrange("Rebate Type",CmpReb."Rebate Type"::Campaign);
+                    CmpReb.SetFilter("Campaign Start Date",'<=%1',SLine."Shopify Order Date");
+                    CmpReb.SetFilter("Campaign End Date",'>=%1',SLine."Shopify Order Date");
+                    RunFlg := True;
+                end;
+                2:
+                begin
+                    CmpReb.Setrange("Rebate Type",CmpReb."Rebate Type"::"Auto Delivery");
+                    RunFlg := Sline."Auto Delivered";
+                end;    
+            end;
+            If RunFlg then
+                If CmpReb.findset then
+                repeat
+                    CmpSku.Reset;
+                    CmpSku.Setrange(Campaign,CmpReb.Campaign);
+                    CmpSku.Setrange(SKU,SLine."No.");
+                    If CmpSku.findset then
+                    begin
+                        LineNo += 10;
+                        Clear(SalesLine);
+                        SalesLine.init;
+                        SalesLine.Validate("Document Type",SLine."Document Type");
+                        SalesLine.Validate("Document No.",SLine."Document No.");
+                        SalesLine."Line No." := LineNo;
+                        Salesline.insert(true);
+                        SalesLine.Validate(Type,SalesLine.Type::"G/L Account");
+                        If i = 1 then
+                        begin
+                            SalesLine.validate("No.",GLSetup."Rebate Accural Acc");
+                            SLine."Campaign Rebate" := True;
+                            SLine."Campaign Rebate Supplier" := CmpReb."Rebate Supplier No.";
+                        end    
+                        else
+                        begin
+                            SalesLine.validate("No.",Glsetup."Auto Order Rebate Acc");
+                            SLine."Auto Delivery Rebate Supplier" := CmpReb."Rebate Supplier No.";
+                        end;    
+                        SalesLine.Validate(Quantity,SLine.Quantity);
+                        Salesline.Validate("Unit Price",CmpSku."Rebate Amount");
+                        RebateTot += CmpSku."Rebate Amount" * SLine.Quantity;
+                        Salesline."Shopify Order ID" := SLine."Shopify Order ID";
+                        SalesLine."Shopify Order Date" := Sline."Shopify Order Date";
+                        SalesLine."Rebate Supplier No." := CmpReb."Rebate Supplier No.";
+                        Salesline.Modify(true)
+                    end;
+                Until CmpReb.next = 0;
+        end;
+    end;
+
     // Here is where we process all received orders
     procedure Process_Orders(Bypass:Boolean;OrdNoID:Biginteger):Boolean
     var
@@ -3351,6 +3700,8 @@ codeunit 80000 "PC Shopify Routines"
         PstDate:date;
         Disc:Decimal;
         ProcCnt:Integer;
+        RebateSum:Decimal;
+        RebTotaler:Decimal;
     begin
         Result := True;
         If Not Res.get('CUSTRETURN') then
@@ -3432,7 +3783,30 @@ codeunit 80000 "PC Shopify Routines"
             end; 
             Item.Validate("Base Unit of Measure",'EA');
             Item.modify();
-        end;    
+        end;
+/*        if Not Item.Get('REBATE_REVERSAL') then
+        begin
+            Item.init;
+            Item.validate("No.",'REBATE_REVERSAL');
+            Item.Insert();
+            Item.Description := 'Do not remove used internally';
+            Item.Type := Item.Type::"Non-Inventory";
+            Item."Shopify Item" := Item."Shopify Item"::internal;
+            Item.validate("Gen. Prod. Posting Group",'FREIGHTOUT');
+            Item.validate("VAT Prod. Posting Group",'GST10');
+            If Not ItemUnit.get('REBATE_REVERSAL','EA') then
+            begin
+                Itemunit.init;
+                ItemUnit."Item No." := 'REBATE_REVERSAL';
+                ItemUnit.Code := 'EA';
+                ItemUnit."Qty. per Unit of Measure" := 1;
+                ItemUnit.Insert;
+                Commit;
+            end; 
+            Item.Validate("Base Unit of Measure",'EA');
+            Item.modify();
+        end;
+        */    
         // Location for return Orders    
         If not Loc.Get('QC') then
         begin
@@ -3588,9 +3962,9 @@ codeunit 80000 "PC Shopify Routines"
             end;
             If Result then
             begin
-                if GuiAllowed Then Win.Open('Processing Order Data @1@@@@@@@@@@@@@@@@@@@');
+               if GuiAllowed Then Win.Open('Processing Order Data @1@@@@@@@@@@@@@@@@@@@');
                 For Loop := 1 to 2 do
-                begin 
+                begin
                     PCOrdHdr[1].reset;
                     PCOrdHdr[1].Setrange("Order Status",PCOrdHdr[1]."Order Status"::Open);
                     PCOrdHdr[1].Setrange("BC Reference No.",'');
@@ -3603,6 +3977,7 @@ codeunit 80000 "PC Shopify Routines"
                     else 
                         PCOrdHdr[1].Setrange("Order Type",PCordHdr[1]."Order Type"::CreditMemo);
                     Clear(ProcCnt);
+                    Clear(RebateSum);
                     Clear(i);
                     If PCOrdHdr[1].findset then
                     repeat
@@ -3626,6 +4001,7 @@ codeunit 80000 "PC Shopify Routines"
                         i += 10000/PCOrdHdr[1].Count;  
                         if GuiAllowed Then Win.Update(1,i Div 1);
                         Clear(ExFlg);
+                        Clear(RebTotaler);
                         PCOrdLin.Reset();
                         PCOrdLin.Setrange(ShopifyID,PCOrdHdr[1].ID);
                         PCOrdLin.Setrange("Not Supplied",False);
@@ -3684,8 +4060,11 @@ codeunit 80000 "PC Shopify Routines"
                                 if loop = 2 then
                                     SalesLine."Palatability Reason" := PCOrdLin."Reason Code";
                                 Salesline."Shopify Order Date" := PCOrdHdr[1]."Shopify Order Date";
-                                SalesLine.Modify(true);
-                            end;
+                                // only add rebates for invoice types
+                                If PCOrdHdr[1]."Order Type" = PCOrdHdr[1]."Order Type"::Invoice then                    
+                                    Add_Rebate_Entries(Salesline,LineNo,RebTotaler);
+                                 SalesLine.Modify(true);
+                           end;
                         Until (PCOrdLin.next = 0) Or Not exFlg;
                         // check to make sure all the shopify order lines were resolved ie BC Item exists
                         If Not exflg then
@@ -3706,6 +4085,8 @@ codeunit 80000 "PC Shopify Routines"
                                 Excp.ShopifyID := PCOrdHdr[1].ID;
                                 Excp.Exception := StrsubStno('Order Process -> Order Item %1 is missing critical setup information',Item."No."); 
                                 excp.Modify();
+                                // here we remove any Rebate totals if the entire orderlines are wiped out
+                                Clear(RebTotaler);
                             end
                             else
                             begin
@@ -3719,6 +4100,7 @@ codeunit 80000 "PC Shopify Routines"
                         end
                         else
                         Begin
+                            RebateSum += RebTotaler;
                             // Now see if any shipping is defined against this Shopify Order
                             If PCOrdHdr[1]."Freight Total" > 0 then
                             begin
@@ -3815,6 +4197,25 @@ codeunit 80000 "PC Shopify Routines"
                         If ProcCnt >= 500 then
                         begin
                             Clear(ProcCnt);
+                            If RebateSum > 0 then
+                            begin
+                                LineNo += 10;
+                                Clear(SalesLine);
+                                SalesLine.init;
+                                SalesLine.Validate("Document Type",SalesHdr."Document Type");
+                                SalesLine.Validate("Document No.",SalesHdr."No.");
+                                SalesLine."Line No." := LineNo;
+                                Salesline.insert(true);
+                                SalesLine.Validate(Type,SalesLine.TYpe::Item);
+                                SalesLine.validate("No.",'REBATE_REVERSAL');
+                                SalesLine.Validate("VAT Prod. Posting Group",'NO GST');
+                                SalesLine.Validate("Unit of Measure Code",'EA');    
+                                SalesLine.Validate(Quantity,1);
+                                Clear(Salesline."Auto Delivered");
+                                Salesline.Validate("Unit Price",-RebateSum);
+                                SalesLine.Modify(true);
+                                Clear(RebateSum);
+                            end;
                             If Loop = 2 then SalesHdr."Reason Code" := 'CUSTRETURN'; 
                             SalesHdr.Modify(true);
                             Commit;
@@ -3867,6 +4268,25 @@ codeunit 80000 "PC Shopify Routines"
                         SalesLine.SetRange("Document No.",OrdNo);
                         If SalesLine.Findset then
                         begin
+                            If RebateSum > 0 then
+                            begin
+                                LineNo += 10;
+                                Clear(SalesLine);
+                                SalesLine.init;
+                                SalesLine.Validate("Document Type",SalesHdr."Document Type");
+                                SalesLine.Validate("Document No.",SalesHdr."No.");
+                                SalesLine."Line No." := LineNo;
+                                Salesline.insert(true);
+                                SalesLine.Validate(Type,SalesLine.TYpe::Item);
+                                SalesLine.validate("No.",'REBATE_REVERSAL');
+                                SalesLine.Validate("VAT Prod. Posting Group",'NO GST');
+                                SalesLine.Validate("Unit of Measure Code",'EA');    
+                                SalesLine.Validate(Quantity,1);
+                                Clear(Salesline."Auto Delivered");
+                                Salesline.Validate("Unit Price",-RebateSum);
+                                SalesLine.Modify(true);
+                                Clear(RebateSum);
+                            end;
                             If Loop = 2 then SalesHdr."Reason Code" := 'CUSTRETURN'; 
                             SalesHdr.Modify(true);
                             Commit;

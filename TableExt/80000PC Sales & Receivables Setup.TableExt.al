@@ -95,6 +95,14 @@ tableextension 80000 "PC Sales & Receivables Ext " extends "Sales & Receivables 
             MaxValue = 4;
             Caption = 'Refund Order Lookback Period in Weeks';
         }
+        field(80045; "Debug Start Date"; Date)
+        {
+        }
+        field(80046; "Debug End Date"; Date)
+        {
+        }
+
+
         field(80050; "Gift Card Order Index"; Biginteger)
         {}
 

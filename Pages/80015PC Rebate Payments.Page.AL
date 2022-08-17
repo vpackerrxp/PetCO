@@ -68,11 +68,18 @@ page 80015 "PC Rebate Payments"
                 Field("Supplier No.";rec."No.")
                 {
                     ApplicationArea = All;
+                    Caption = 'Purchase Supplier No.';
                     Editable = false;
                 }
                 Field(Name;rec.Name)
                 {
                     ApplicationArea = All;
+                    Editable = false;
+                }
+                Field("Rebate Supplier No.";rec."Purchaser Code")
+                {
+                    ApplicationArea = All;
+                    Caption = 'Rebate Supplier No.';
                     Editable = false;
                 }
                 Field("Volume Rebate Total";rec."Auto Order Rebate %")
@@ -178,7 +185,7 @@ page 80015 "PC Rebate Payments"
         Reb:record "PC Purchase Rebates";
         SupReb:Record "PC Supplier Brand Rebates"; 
    begin
-        If (rec."Budgeted Amount" > 0) And (Pstdate <> 0D) then
+        If (rec."Budgeted Amount" > 0) And (Pstdate <> 0D) And (Rec."Purchaser Code" <> '') then
         begin
             If not Res.Get('REBATES') then
             begin
@@ -193,7 +200,7 @@ page 80015 "PC Rebate Payments"
                     PurchHdr.Init;
                     PurchHdr.Validate("Document Type",PurchHdr."Document Type"::"Credit Memo");
                     PurchHdr.insert(true);
-                    PurchHdr.Validate("Buy-from Vendor No.",rec."No.");
+                    PurchHdr.Validate("Buy-from Vendor No.",rec."Purchaser Code");
                     PurchHdr.validate("Posting Date",PstDate);
                     PurchHdr."Your Reference" := StrSubStno('Rebates as of %1',TODAY);
                     PurchHdr."Reason Code" := res.Code;
@@ -356,9 +363,9 @@ page 80015 "PC Rebate Payments"
                 end;
                 2:
                 begin
-                    If Not Cust.Get(rec."No.") then
+                    If Not Cust.Get(rec."Purchaser Code") then
                     begin
-                        Vend.Get(Rec."No.");
+                        Vend.Get(Rec."Purchaser Code");
                         Cust.Init;
                         Cust.Validate("No.",Vend."No.");
                         Cust.Insert();
@@ -543,7 +550,7 @@ page 80015 "PC Rebate Payments"
             end;
         end     
         else
-            Message('No Rebates To Process and or Posting Date Is Not Defined!');               
+            Message('No Rebates To Process and or Posting Date Is Not Defined and or Rebate Supplier is Missing!');               
     end;
     local Procedure Calculate_ALL_Rebates(Dat:Array[2] of Date);
     var
@@ -594,6 +601,7 @@ page 80015 "PC Rebate Payments"
                     Win.update(1,Ven."No.");
                     rec."No." := Ven."No.";
                     rec.Name := Ven.Name;
+                    rec."Purchaser Code" := SupReb."Rebate Supplier No.";
                     Clear(rec."Auto Order Rebate %");
                     Clear(rec."Marketing Rebate %");
                     Clear(rec."Supply Chain Rebate %");
