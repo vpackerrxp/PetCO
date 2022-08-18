@@ -69,7 +69,8 @@ pageextension 80003 "PC Customer List Ext" extends "Customer List"
                         1:PAGE.Run(PAGE::"PC Refund Processing");
                         2:PAGE.Run(PAGE::"PC Sales VetChat");
                         3:Page.Run(Page::"PC Zero Dollar Process");
-                        4:Page.Run(Page::"PC Auto Delivery Processing");
+                        4:Page.Run(Page::"PC Campaign_Auto Delivery Proc");
+                        //4:Page.Run(Page::"PC Auto Delivery Processing");
                         5:PAGE.Run(PAGE::"PC Sales Analysis");
                     end;
                 end;

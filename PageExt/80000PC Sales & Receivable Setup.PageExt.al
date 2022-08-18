@@ -537,7 +537,7 @@ pageextension 80000 "PC Sales & Rec Setup Ext" extends "Sales & Receivables Setu
                 begin
                     //CU1.Process_Out_Of_Stock_Shopify_Items();
                     //exit;
-                    //Cu.Fix_con();
+                    Cu.Fix_con();
                     Cu.Fix_Shopify_Dates();
                     Exit;
                     //pg.LookupMode := true;

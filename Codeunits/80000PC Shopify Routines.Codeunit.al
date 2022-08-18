@@ -2286,28 +2286,25 @@ codeunit 80000 "PC Shopify Routines"
         If Flg Then
         begin
             // see if we have the invoice but need to change it to Cancelled
-            If InvFlg then
-                OrdRec[1]."Shopify Order Type" := OrdRec[1]."Shopify Order Type"::Cancelled
-            else
+            If InvFlg then 
+                OrdRec[1].Delete();
+            OrdRec[1].Init();
+            OrdRec[1]."Shopify Order ID" := Jstoken[2].AsValue().AsBigInteger();
+            OrdRec[1]."Shopify Order Type" := OrdRec[1]."Shopify Order Type"::Invoice;
+            If CFlg then
+                OrdRec[1]."Shopify Order Type" := OrdRec[1]."Shopify Order Type"::Cancelled;
+            OrdRec[1].insert;
+        end;    
+        JsReftoken.SelectToken('order_number',Jstoken[2]);
+        OrdRec[1]."Shopify Order No" := Jstoken[2].AsValue().AsBigInteger();
+        If JsReftoken.SelectToken('processed_at',Jstoken[2]) then
+            if Not JsToken[2].AsValue().IsNull then
             begin
-                OrdRec[1].Init();
-                OrdRec[1]."Shopify Order ID" := Jstoken[2].AsValue().AsBigInteger();
-                OrdRec[1]."Shopify Order Type" := OrdRec[1]."Shopify Order Type"::Invoice;
-                If CFlg then
-                    OrdRec[1]."Shopify Order Type" := OrdRec[1]."Shopify Order Type"::Cancelled;
-                OrdRec[1].insert;
+                Dat:= Copystr(Jstoken[2].AsValue().astext,1,10);
+                if Evaluate(OrdRec[1]."Shopify Order Date",Copystr(Dat,9,2) + '/' + Copystr(Dat,6,2) + '/' + Copystr(Dat,1,4)) then;
             end;    
-            JsReftoken.SelectToken('order_number',Jstoken[2]);
-            OrdRec[1]."Shopify Order No" := Jstoken[2].AsValue().AsBigInteger();
-            If JsReftoken.SelectToken('processed_at',Jstoken[2]) then
-                if Not JsToken[2].AsValue().IsNull then
-                begin
-                    Dat:= Copystr(Jstoken[2].AsValue().astext,1,10);
-                    if Evaluate(OrdRec[1]."Shopify Order Date",Copystr(Dat,9,2) + '/' + Copystr(Dat,6,2) + '/' + Copystr(Dat,1,4)) then;
-                end;    
-            Get_Order_Reconciliation_Transactions(OrdRec[1]);
-            OrdRec[1].Modify();
-        end;
+        Get_Order_Reconciliation_Transactions(OrdRec[1]);
+        OrdRec[1].Modify();
         If JsRefToken.SelectToken('refunds',JsToken[2]) then
         Begin
             OrdRec[2].Copy(OrdRec[1]);
@@ -3649,11 +3646,13 @@ codeunit 80000 "PC Shopify Routines"
                             SalesLine.validate("No.",GLSetup."Rebate Accural Acc");
                             SLine."Campaign Rebate" := True;
                             SLine."Campaign Rebate Supplier" := CmpReb."Rebate Supplier No.";
+                            SLine."Campaign Rebate Amount" := CmpSku."Rebate Amount" * SLine.Quantity;
                         end    
                         else
                         begin
                             SalesLine.validate("No.",Glsetup."Auto Order Rebate Acc");
                             SLine."Auto Delivery Rebate Supplier" := CmpReb."Rebate Supplier No.";
+                            Sline."Auto Delivery Rebate Amount" := CmpSku."Rebate Amount" * SLine.Quantity;
                         end;    
                         SalesLine.Validate(Quantity,SLine.Quantity);
                         Salesline.Validate("Unit Price",CmpSku."Rebate Amount");
@@ -3784,7 +3783,7 @@ codeunit 80000 "PC Shopify Routines"
             Item.Validate("Base Unit of Measure",'EA');
             Item.modify();
         end;
-/*        if Not Item.Get('REBATE_REVERSAL') then
+        if Not Item.Get('REBATE_REVERSAL') then
         begin
             Item.init;
             Item.validate("No.",'REBATE_REVERSAL');
@@ -3806,8 +3805,7 @@ codeunit 80000 "PC Shopify Routines"
             Item.Validate("Base Unit of Measure",'EA');
             Item.modify();
         end;
-        */    
-        // Location for return Orders    
+       // Location for return Orders    
         If not Loc.Get('QC') then
         begin
             loc.init;
@@ -4063,7 +4061,7 @@ codeunit 80000 "PC Shopify Routines"
                                 // only add rebates for invoice types
                                 If PCOrdHdr[1]."Order Type" = PCOrdHdr[1]."Order Type"::Invoice then                    
                                     Add_Rebate_Entries(Salesline,LineNo,RebTotaler);
-                                 SalesLine.Modify(true);
+                                SalesLine.Modify(true);
                            end;
                         Until (PCOrdLin.next = 0) Or Not exFlg;
                         // check to make sure all the shopify order lines were resolved ie BC Item exists

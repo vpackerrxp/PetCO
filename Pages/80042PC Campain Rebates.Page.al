@@ -5,6 +5,8 @@ page 80042 "PC Campaign Rebates"
     PageType = Worksheet;
     SourceTable = "PC Campaign Rebates";
     UsageCategory = Tasks;
+    InsertAllowed = false;
+    ModifyAllowed = false;
     
     layout
     {
@@ -15,7 +17,7 @@ page 80042 "PC Campaign Rebates"
                 field("Rebate Vendor Filter";Supp)
                 {
                     ApplicationArea = All;
-                    TableRelation = Vendor."No." where("No."=filter('SKU*'));
+                    TableRelation = Vendor."No." where("No."=filter('SUP*'));
                     trigger OnValidate()
                     Begin
                         Setfilters();
@@ -79,28 +81,54 @@ page 80042 "PC Campaign Rebates"
                 field("Rebate Type"; Rec."Rebate Type")
                 {
                     ApplicationArea = All;
-                    Visible = false;
+                    Style = Strong;
                 }
                 field("Rebate Supplier No."; Rec."Rebate Supplier No.")
                 {
                     ApplicationArea = All;
+                    Style = Strong;
+                    trigger OnDrillDown()
+                    var
+                        CU:Codeunit "PC Import Export Routines";
+                    begin
+                        If Confirm('Do you wish to Export this Campaign Data Now?') then
+                            Cu.Export_Campaign_Data(Rec.Campaign);
+                    end;
                 }
                 field(Campaign; Rec.Campaign)
                 {
                     ApplicationArea = All;
+                    Style = Strong;
                 }
                 field("Campaign Start Date"; Rec."Campaign Start Date")
                 {
                     ApplicationArea = All;
+                    Style = Strong;
                 }
                 field("Campaign End Date"; Rec."Campaign End Date")
                 {
                     ApplicationArea = All;
+                    Style = Strong;
                 }
                 field("Campaign SKUs";rec."Campaign SKUs")
                 {
                     ApplicationArea = All;
-                }
+                    Style = Strong;
+                    trigger OnDrillDown()
+                    var
+                        CSku:record "PC Campaign SKU";
+                        PG:Page "PC Campaign SKU";
+                    begin
+                        CSku.reset;
+                        CSku.Setrange(Campaign,Rec.Campaign);
+                        If CSku.Findset then
+                        begin
+                            Pg.SetTableView(CSku);
+                            Pg.Show_Hide(Rec."Rebate Type" = Rec."Rebate Type"::Campaign);
+                            Pg.RunModal();
+                        end;     
+                    end;
+                 }
             }
         }
     }
@@ -121,8 +149,14 @@ page 80042 "PC Campaign Rebates"
         If Camp <> '' then Rec.Setrange(Campaign,Camp);
         CurrPage.update(false);
     end;
+    procedure Show_Hide(Flg:Boolean)
+    Begin
+        ShowFlg := Flg;
+    End;
+
     var
         Supp:code[20];
         Camp:code[20];
         TempType:Option Campaign,"Auto Delivery";
+        ShowFlg:Boolean;
 }

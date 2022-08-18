@@ -2185,11 +2185,56 @@ Codeunit 80002 "PC Import Export Routines"
         CRLF[1] := 13;
         CRLF[2] := 10;
         BlobTmp.CreateOutStream(OutStrm);
-        OutStrm.WriteText('Rebate Supplier No./SKU,Campaign Code/Sell Price,Campaign Type/Rebate Price,Campaign Start Date,Campaign End Date' + CRLF);
+        OutStrm.WriteText('Rebate Supplier No./SKU,Campaign Code/Campaign Price,Campaign Type/Rebate Amount,Campaign Start Date,Campaign End Date' + CRLF);
         OutStrm.WriteText(',,' + Format(TempType) + ',,' + CRLF);
         FileName := 'Campaign_Export.csv'; 
         BlobTmp.CreateInStream(InStrm);
-        DownloadFromStream(Instrm,'Campaign Temaplate Export','','',FileName);
+        DownloadFromStream(Instrm,'Campaign Template Export','','',FileName);
+        Message('File '+ Filename + ' has been downloaded to your windows download folder');
+    end;
+    procedure Export_Campaign_Data(Camp:Code[20])
+    var
+        BlobTmp:COdeunit "Temp Blob";
+        OutStrm:OutStream;
+        Instrm:InStream;
+        CRLF:text[2];
+        Filename:text;
+        CmpReb:Record "PC Campaign Rebates";
+        CmpSku:Record "PC Campaign SKU";
+    Begin
+        CRLF[1] := 13;
+        CRLF[2] := 10;
+        BlobTmp.CreateOutStream(OutStrm);
+        OutStrm.WriteText('Rebate Supplier No./SKU,Campaign Code/Campaign Price,Campaign Type/Rebate Amount,Campaign Start Date,Campaign End Date' + CRLF);
+        CmpReb.Reset;
+        CmpReb.SetRange(Campaign,Camp);
+        CmpReb.findset;
+        OutStrm.WriteText(CmpReb."Rebate Supplier No." + ',');
+        OutStrm.WriteText(CmpReb.Campaign + ',');
+        OutStrm.WriteText(Format(CmpReb."Rebate Type") + ',');
+        If CmpReb."Rebate Type" = CmpReb."Rebate Type"::Campaign then
+        Begin
+            OutStrm.WriteText(Format(CmpReb."Campaign Start Date") + ',');
+            OutStrm.WriteText(Format(CmpReb."Campaign End Date") + CRLF);
+        end
+        else
+            OutStrm.WriteText(',' + CRLF);
+        CmpSku.Reset;
+        CmpSku.Setrange(Campaign,CmpReb.Campaign);
+        If CmpSku.Findset then 
+        repeat
+            OutStrm.WriteText(CmpSku.SKU + ',');
+            If CmpReb."Rebate Type" = CmpReb."Rebate Type"::Campaign then
+            Begin
+                OutStrm.WriteText(Format(CmpSku."Campaign Price",0,'<Precision,2><Standard Format,1>') + ',');
+                OutStrm.WriteText(Format(CmpSku."Rebate Amount",0,'<Precision,2><Standard Format,1>') + CRLF);
+            end
+            else
+                OutStrm.WriteText(',' + Format(CmpSku."Rebate Amount",0,'<Precision,2><Standard Format,1>') + CRLF);
+        until CmpSku.Next = 0;    
+        FileName := Camp + '_Campaign_Export.csv'; 
+        BlobTmp.CreateInStream(InStrm);
+        DownloadFromStream(Instrm,'Campaign Data Export','','',FileName);
         Message('File '+ Filename + ' has been downloaded to your windows download folder');
     end;
     procedure Import_Campaign_Rebates()
@@ -2256,7 +2301,7 @@ Codeunit 80002 "PC Import Export Routines"
                             repeat
                                 If ((Dates[1] >= CmpReb."Campaign Start Date") AND (Dates[1] <= CmpReb."Campaign End Date"))
                                 Or ((Dates[2] >= CmpReb."Campaign Start Date") AND (Dates[2] <= CmpReb."Campaign End Date")) then 
-                                    Error(Strsubstno('Campaign Dates overlapp with Campaign %1 dates',CmpReb.Campaign));
+                                    Error(Strsubstno('Campaign Dates Overlapps with Campaign %1 dates',CmpReb.Campaign));
                             until CmpReb.next = 0;        
                         end;
                     end
@@ -2290,10 +2335,10 @@ Codeunit 80002 "PC Import Export Routines"
                                 CmpSku.Setrange(Campaign,CmpReb.Campaign);
                                 CmpSku.Setrange(SKU,ImpData.SKU);
                                 If CmpSku.findset then
-                                    Error(StrsubStno('SKU %1 is already assigned Campaign %2',ImpData.SKU,CmpSku.Campaign));
+                                    Error(StrsubStno('SKU %1 is already assigned to Campaign %2',ImpData.SKU,CmpSku.Campaign));
                             Until CmpReb.Next = 0;
                         end;                            
-                        Win.update(1,ImpData.SKU);             
+                        If GuiAllowed then Win.update(1,ImpData.SKU);             
                     end;    
                 end;
             end;    
@@ -2324,12 +2369,15 @@ Codeunit 80002 "PC Import Export Routines"
             CmpSku.Setrange(SKU,ImpData.SKU);
             If not CmpSku.Findset then
             begin
-                CmpSku.Copy(ImpData);
-                CmpSku.Validate("Campaign Price");
+                CmpSku.Init;
+                CmpSku.Campaign := ImpData.Campaign;
+                CmpSku.SKU := ImpData.SKU;
+                CmpSku.validate("Campaign Price",ImpData."Campaign Price");
+                CmpSku."Rebate Amount" := ImpData."Rebate Amount";
                 CmpSku.Insert;
             end;
         Until ImpData.next = 0;
-        Win.Close;
+        If GuiAllowed then Win.Close;
         Cu.Correct_Sales_Prices('');
     end;
 }

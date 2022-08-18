@@ -659,8 +659,6 @@ page 80032 "PC Auto Delivery Processing"
     end;
 
     trigger OnOpenPage()
-    var
-        cu:Codeunit "PC Shopify Routines";
     begin
         Clear(Postdate);
     end;

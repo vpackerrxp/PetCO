@@ -58,7 +58,15 @@ tableextension 80004 "PC Sales Invoice Line Ext"  extends "Sales Invoice Line"
         {
            Editable = false;
         }   
-        field(80014;"Auto Delivery Rebate Supplier";Code[20])
+        field(80014;"Campaign Rebate Amount";Decimal)
+        {
+           Editable = false;
+        }
+        field(80015;"Auto Delivery Rebate Supplier";Code[20])
+        {
+           Editable = false;
+        }
+        field(80016;"Auto Delivery Rebate Amount";Decimal)
         {
            Editable = false;
         }

@@ -6,17 +6,25 @@ table 80035 "PC Campaign SKU"
     {
         field(10; Campaign; Code[20])
         {
+            Editable = false;
         }
         field(20; SKU; Code[20])
         {
             TableRelation = Item."No.";
+            Editable = false;
         }
-        field(30; "Campaign Price"; Decimal)
+        field(30; Description;text[100])
+        {
+            FieldClass = FlowField;
+            CalcFormula = lookup(Item.Description where("No."=field(SKU)));
+        }
+        field(40; "Campaign Price"; Decimal)
         {
             trigger OnValidate()
             var
                 Sprice:Record "PC Shopfiy Pricing";
                 CmpReb:record "PC Campaign Rebates";
+                Item:record Item;
             begin
                 If Rec."Campaign Price" <> xrec."Campaign Price" then
                 begin
@@ -40,14 +48,15 @@ table 80035 "PC Campaign SKU"
                             Sprice."Silver Member Disc %" := 0;
                             Sprice."Auto Order Disc %" := 0;
                             Sprice."VIP Disc %" := 0;
-                            Sprice."New RRP Price" := Rec."Campaign Price";
+                            Item.Get(Rec.SKU);
+                            Sprice."New RRP Price" := Item."Unit Price";
                             Sprice."Ending Date" := CmpReb."Campaign End Date";
                             Sprice.Modify(False);    
                         end;
                 end;
             end;          
         }
-        field(40; "Rebate Amount"; Decimal)
+        field(50; "Rebate Amount"; Decimal)
         {
         }
     }

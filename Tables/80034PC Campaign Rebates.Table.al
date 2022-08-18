@@ -7,7 +7,7 @@ table 80034 "PC Campaign Rebates"
         field(10;"Rebate Supplier No."; Code[20])
         {
             TableRelation = Vendor."No.";
-            Editable = False;
+            //Editable = False;
         }
         field(30; Campaign; Code[20])
         {
@@ -30,19 +30,6 @@ table 80034 "PC Campaign Rebates"
         {
             FieldClass = FlowField;
             CalcFormula = Count("PC Campaign SKU" Where(Campaign=field(Campaign)));
-            trigger OnLookup();
-            var
-                CSku:record "PC Campaign SKU";
-                PG:Page "PC Campaign SKU";
-            begin
-                CSku.reset;
-                CSku.Setrange(Campaign,Rec.Campaign);
-                If CSku.Findset then
-                begin
-                    Pg.SetTableView(CSku);
-                    Pg.RunModal();
-                end;     
-            end;
         }
     }
     keys

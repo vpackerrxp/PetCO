@@ -46,7 +46,7 @@ var
         J:decimal;
     begin
         Clear(J);
-    /*    Win.Open('Processing Invoices @1@@@@@@@@@@@@@@@@@@');
+        Win.Open('Processing Invoices @1@@@@@@@@@@@@@@@@@@');
         OrhHdr.Reset();
         OrhHdr.Setfilter("Order Type",'%1|%2',OrhHdr."Order Type"::Invoice,OrhHdr."Order Type"::Cancelled);
         OrhHdr.Setrange("Order Status",OrhHdr."Order Status"::Closed);
@@ -58,8 +58,9 @@ var
             SinvLine.Setrange("Shopify Order ID",OrhHdr."Shopify Order ID");
             If SinvLine.findset then
                 SinvLine.ModifyAll("Shopify Order Date",OrhHdr."Shopify Order Date",False);
-        until OrhHdr.next = 0;     
-        Win.Close;*/
+        until OrhHdr.next = 0;
+        Commit;     
+        Win.Close;
         Clear(j);   
         Win.Open('Processing Refund @1@@@@@@@@@@@@@@@@@@');
         OrhHdr.Reset();
@@ -74,7 +75,8 @@ var
             If SCrdLine.findset then
                 SCrdLine.ModifyAll("Shopify Order Date",OrhHdr."Shopify Order Date",False);
         until OrhHdr.next = 0;
-        Win.Close;        
+        Win.Close;
+        Commit;        
     end;
     procedure Testrun()
     var
