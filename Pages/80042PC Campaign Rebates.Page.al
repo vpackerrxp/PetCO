@@ -139,7 +139,7 @@ page 80042 "PC Campaign Rebates"
         //Clean up of Campaigns once they are done
         CmpReb.Reset;
         CmpReb.SetRange("Rebate Type",CmpReb."Rebate Type"::Campaign);
-        CmpReb.Setfilter("Campaign End Date",'<=%1',Calcdate('-10D',Today));
+        CmpReb.Setfilter("Campaign End Date",'<%1',Today);
         If CmpReb.findSet then CmpReb.DeleteAll(true);
     end;
     local procedure Setfilters();

@@ -29,6 +29,7 @@ page 80044 "PC Campaign_Auto Delivery Proc"
                             else
                                 ColFlg2 := true; 
                         end;
+                        Refress_data_msg(True);
                         CurrPage.Update(False);               
                     end;
                 }
@@ -64,7 +65,7 @@ page 80044 "PC Campaign_Auto Delivery Proc"
                         Refress_data_msg(true);
                     end;
                 }
-                field("Supplier Filter"; Supp)
+                field("Rebate Supplier Filter"; Supp)
                 {
                     ApplicationArea = All;
                     Style = Strong;
@@ -93,30 +94,7 @@ page 80044 "PC Campaign_Auto Delivery Proc"
                         Refress_data_msg(true);
                     end;
                 }
-                field("Brand Filter"; Brd)
-                {
-                    ApplicationArea = All;
-                    Style = Strong;
-                    trigger OnLookup(var Text: Text): Boolean
-                    var
-                        Pg:Page "PC Supplier Brand List";
-                        Brad:record "PC Supplier Brand Rebates";
-                    begin
-                        pg.LookupMode := true;
-                        If Pg.RunModal() = Action::LookupOK then
-                        begin
-                            Pg.GetRecord(Brad);
-                            Brd := Brad.Brand;
-                            Refress_data_msg(true);
-                        end; 
-                    end;       
-                    trigger OnAssistEdit()
-                    begin
-                        Clear(Brd);
-                        Refress_data_msg(true);
-                   end;
-                }
-               field("Claim Filter"; Claim)
+                field("Claim Filter"; Claim)
                 {
                     ApplicationArea = All;
                     Style = Strong;
@@ -127,7 +105,7 @@ page 80044 "PC Campaign_Auto Delivery Proc"
                 }
                  Field("Rebate Posting Date";PstDate)
                 {
-                    Caption = 'Auto Delivery Rebate Posting Date';
+                    Caption = 'Rebate Posting Date';
                     ApplicationArea = All;
                     trigger OnValidate()
                     begin
@@ -149,6 +127,7 @@ page 80044 "PC Campaign_Auto Delivery Proc"
                     ApplicationArea = All;
                     Style = Unfavorable;
                     ShowCaption = false;
+                    Editable = False;
                 }
             } 
             repeater(Group)
@@ -244,6 +223,7 @@ page 80044 "PC Campaign_Auto Delivery Proc"
                 {
                     ApplicationArea = All;
                     Editable = false;
+                    Caption = 'Purchase Supplier';
                 }
                 field(Brand; rec.Brand)
                 {
@@ -338,24 +318,45 @@ page 80044 "PC Campaign_Auto Delivery Proc"
                     Res:Record "Reason Code";
                     PSetup:Record "Purchases & Payables Setup";
                     ExtDoc:Boolean;
+                    PstAcc:Code[20];
                     Cnt:Integer;
                     MsgSupp:boolean;
+                    Flg:Boolean;
                 begin
                     PSetup.Get;
                     Extdoc := PSetup."Ext. Doc. No. Mandatory";
                     Clear(PSetup."Ext. Doc. No. Mandatory");
                     PSetup.Modify;
                     Commit;
-                    GenLed.Get;
-                    If (GenLed."Auto Order Rebate Acc" <> '') AND (PstDate <> 0D) then
+                    If Not Res.get('AUTODELIV') then
                     begin
-                        If Not Res.get('AUTODELIV') then
-                        begin
-                            Res.Init;
-                            Res.Code := 'AUTODELIV';
-                            Res.Description := 'Auto Delivery';
-                            Res.Insert();
-                        end;
+                        Res.Init;
+                        Res.Code := 'AUTODELIV';
+                        Res.Description := 'Auto Delivery';
+                        Res.Insert();
+                    end;
+                    If Not Res.get('CAMPDELIV') then
+                    begin
+                        Res.Init;
+                        Res.Code := 'CAMPDELIV';
+                        Res.Description := 'Campaign Delivery';
+                        Res.Insert();
+                    end;
+                    GenLed.Get;
+                    Case Mode of 
+                        Mode::"Auto Delivery":
+                            Begin
+                                PstAcc := GenLed."Auto Order Rebate Acc";
+                                Res.Get('AUTODELIV');
+                            end    
+                        else
+                            Begin
+                                PstAcc := GenLed."Campaign Rebate Acc";
+                                Res.Get('CAMPDELIV');
+                            end;    
+                    end;         
+                    If (PstAcc <> '') And  (PstDate <> 0D) then
+                    begin
                         Clear(MsgSupp);
                         If Supp = '' then MsgSupp := Confirm('Supress Vendor Rebate Notifications');
                         case StrMenu('Process As Purchase Credit,Process As Sales Invoice') of
@@ -365,7 +366,7 @@ page 80044 "PC Campaign_Auto Delivery Proc"
                                 SInvLine.Setrange("Palatability Status",SinvLine."Palatability Status"::Unclaimed);
                                 If Not SInvLine.findset then 
                                 begin
-                                    Message('Your Filtered Data does not consist of Unclaimed Auto Delivered Items');
+                                    Message('Your Filtered Data does not consist of Unclaimed Rebate Items');
                                     exit;      
                                 end;
                                 Clear(Cnt);
@@ -376,15 +377,17 @@ page 80044 "PC Campaign_Auto Delivery Proc"
                                     Vend.setfilter("No.",'SUP-*');
                                 If Vend.findset then
                                 repeat
-                                    Clear(ClaimTot);                      
-                                    SInvline.Setrange("Rebate Supplier No.",vend."No.");
+                                    Clear(ClaimTot);
+                                    If Mode = Mode::"Auto Delivery" then                      
+                                        SInvline.Setrange("Auto Delivery Rebate Supplier",vend."No.")
+                                    else
+                                         SInvline.Setrange("Campaign Rebate Supplier",vend."No.");
                                     If Sinvline.Findset then
                                     repeat
-                                        SupReb.reset;
-                                        SupReb.Setrange("Supplier No.",vend."No.");
-                                        SupReb.Setrange(Brand,SInvLine."Rebate Brand");
-                                        If SupReb.Findset then    
-                                            ClaimTot +=  SInvLine."Unit Cost" * SInvLine."Quantity (Base)" * SupReb."Auto Order Rebate %"/100;   
+                                        If Mode = Mode::"Auto Delivery" then                      
+                                            ClaimTot +=  SInvLine."Auto Delivery Rebate Amount"  
+                                        else
+                                            ClaimTot +=  SInvLine."Campaign Rebate Amount"; 
                                     Until SInvline.Next = 0;
                                     If ClaimTot > 0 then 
                                     begin
@@ -404,18 +407,33 @@ page 80044 "PC Campaign_Auto Delivery Proc"
                                         Purchline.validate("Line No.",10000);
                                         PurchLine.insert(true);
                                         PurchLine.validate(Type,PurchLine.Type::"G/L Account");
-                                        PurchLine.Validate("No.",GenLed."Auto Order Rebate Acc");
+                                        If Mode = Mode::"Auto Delivery" then
+                                        Begin
+                                            PurchLine.Validate("No.",GenLed."Auto Order Rebate Acc");
+                                            If (Postdate[1] <> 0D) and (Postdate[2] <> 0D) then
+                                                Purchline.Description := StrSubStno('%1 - %2 Auto Order Rebate',Postdate[1],Postdate[2])
+                                            else If (Postdate[1] <> 0D) then
+                                                Purchline.Description := StrSubStno('%1.. Auto Order Rebate',Postdate[1])
+                                            else If (Postdate[2] <> 0D) then
+                                                Purchline.Description := StrSubStno('..%1 Auto Order Rebate',Postdate[2])
+                                            else 
+                                                Purchline.Description := StrSubStno('%1 Auto Order Rebate',Today);
+                                        end         
+                                        else
+                                        Begin
+                                            PurchLine.Validate("No.",GenLed."Campaign Rebate Acc");
+                                            If (Postdate[1] <> 0D) and (Postdate[2] <> 0D) then
+                                                Purchline.Description := StrSubStno('%1 - %2 Campaign Order Rebate',Postdate[1],Postdate[2])
+                                            else If (Postdate[1] <> 0D) then
+                                                Purchline.Description := StrSubStno('%1.. Campaign Order Rebate',Postdate[1])
+                                            else If (Postdate[2] <> 0D) then
+                                                Purchline.Description := StrSubStno('..%1 Campaign Order Rebate',Postdate[2])
+                                            else 
+                                                Purchline.Description := StrSubStno('%1 Campaign Order Rebate',Today);
+                                        end;        
                                         PurchLine.validate(Quantity,1);
                                         Purchline.Validate("Direct Unit Cost",ClaimTot);
-                                        If (Postdate[1] <> 0D) and (Postdate[2] <> 0D) then
-                                            Purchline.Description := StrSubStno('%1 - %2 Auto Order Rebate',Postdate[1],Postdate[2])
-                                        else If (Postdate[1] <> 0D) then
-                                            Purchline.Description := StrSubStno('%1.. Auto Order Rebate',Postdate[1])
-                                        else If (Postdate[2] <> 0D) then
-                                                Purchline.Description := StrSubStno('..%1 Auto Order Rebate',Postdate[2])
-                                        else 
-                                                Purchline.Description := StrSubStno('%1 Auto Order Rebate',Today);
-                                         Purchline.modify;
+                                        Purchline.modify;
                                         Commit;
                                         If Cu.Run(PurchHdr) then
                                         begin
@@ -425,8 +443,6 @@ page 80044 "PC Campaign_Auto Delivery Proc"
                                         else
                                             Message('Posting Error -> %1',GetLastErrorText());
                                     end    
-                                    else If Not MsgSupp then
-                                        message('Vendor %1 has no claim rebates detected in the data .. check if Auto Delivery Rebate Percentages have been defined',Vend."No.")    
                                 Until Vend.next = 0;
                                 If Cnt > 0 then 
                                 begin 
@@ -447,7 +463,7 @@ page 80044 "PC Campaign_Auto Delivery Proc"
                                 SInvLine.Setrange("Palatability Status",SinvLine."Palatability Status"::Unclaimed);
                                 If Not SInvLine.findset then 
                                 begin
-                                    Message('Your Filtered Data does not consist of Unclaimed Auto Delivered Items');
+                                    Message('Your Filtered Data does not consist of Unclaimed Rebate Items');
                                     exit;      
                                 end;
                                 Clear(Cnt);
@@ -458,15 +474,17 @@ page 80044 "PC Campaign_Auto Delivery Proc"
                                     Vend.setfilter("No.",'SUP-*');
                                 If Vend.findset then
                                 repeat
-                                    Clear(ClaimTot);                      
-                                    SInvline.Setrange("Rebate Supplier No.",vend."No.");
+                                    Clear(ClaimTot);
+                                    If Mode = Mode::"Auto Delivery" then                      
+                                        SInvline.Setrange("Auto Delivery Rebate Supplier",vend."No.")
+                                    else
+                                         SInvline.Setrange("Campaign Rebate Supplier",vend."No.");
                                     If Sinvline.Findset then
                                     repeat
-                                        SupReb.reset;
-                                        SupReb.Setrange("Supplier No.",vend."No.");
-                                        SupReb.Setrange(Brand,SInvLine."Rebate Brand");
-                                        If SupReb.Findset then    
-                                            ClaimTot +=  SInvLine."Unit Cost" * SInvLine."Quantity (Base)" * SupReb."Auto Order Rebate %"/100;   
+                                        If Mode = Mode::"Auto Delivery" then                      
+                                            ClaimTot +=  SInvLine."Auto Delivery Rebate Amount"  
+                                        else
+                                            ClaimTot +=  SInvLine."Campaign Rebate Amount"; 
                                     Until SInvline.Next = 0;
                                     If ClaimTot > 0 then 
                                     begin
@@ -504,18 +522,34 @@ page 80044 "PC Campaign_Auto Delivery Proc"
                                         Salesline.validate("Line No.",10000);
                                         SalesLine.insert(true);
                                         SalesLine.validate(Type,SalesLine.Type::"G/L Account");
-                                        SalesLine.Validate("No.",GenLed."Auto Order Rebate Acc");
+                                        If Mode = Mode::"Auto Delivery" then
+                                        Begin
+                                            SalesLine.Validate("No.",GenLed."Auto Order Rebate Acc");
+                                            If (Postdate[1] <> 0D) and (Postdate[2] <> 0D) then
+                                                Salesline.Description := StrSubStno('%1 - %2 Auto Order Rebate',Postdate[1],Postdate[2])
+                                            else If (Postdate[1] <> 0D) then
+                                                Salesline.Description := StrSubStno('%1.. Auto Order Rebate',Postdate[1])
+                                            else If (Postdate[2] <> 0D) then
+                                                Salesline.Description := StrSubStno('..%1 Auto Order Rebate',Postdate[2])
+                                            else 
+                                                Salesline.Description := StrSubStno('%1 Auto Order Rebate',Today);
+                                        end         
+                                        else
+                                        Begin
+                                            SalesLine.Validate("No.",GenLed."Campaign Rebate Acc");
+                                            If (Postdate[1] <> 0D) and (Postdate[2] <> 0D) then
+                                                Salesline.Description := StrSubStno('%1 - %2 Campaign Order Rebate',Postdate[1],Postdate[2])
+                                            else If (Postdate[1] <> 0D) then
+                                                Salesline.Description := StrSubStno('%1.. Campaign Order Rebate',Postdate[1])
+                                            else If (Postdate[2] <> 0D) then
+                                                Salesline.Description := StrSubStno('..%1 Campaign Order Rebate',Postdate[2])
+                                            else 
+                                                Salesline.Description := StrSubStno('%1 Campaign Order Rebate',Today);
+                                        end;        
                                         SalesLine.validate(Quantity,1);
                                         Salesline.Validate("Unit Price",ClaimTot);
-                                        Salesline."Auto Delivered" := False;
-                                        If (Postdate[1] <> 0D) and (Postdate[2] <> 0D) then
-                                            Salesline.Description := StrSubStno('%1 - %2 Auto Order Rebate',Postdate[1],Postdate[2])
-                                        else If (Postdate[1] <> 0D) then
-                                            Salesline.Description := StrSubStno('%1.. Auto Order Rebate',Postdate[1])
-                                        else If (Postdate[2] <> 0D) then
-                                                Salesline.Description := StrSubStno('..%1 Auto Order Rebate',Postdate[2])
-                                        else 
-                                                Salesline.Description := StrSubStno('%1 Auto Order Rebate',Today);
+                                        Clear(Salesline."Auto Delivered");
+                                        Clear(SalesLine."Campaign Rebate");
                                         Salesline.modify;
                                         Commit;
                                         If Cu2.Run(SalesHdr) then
@@ -526,8 +560,6 @@ page 80044 "PC Campaign_Auto Delivery Proc"
                                         else
                                             message('Posting Error - > %1',GetLastErrorText())
                                     end
-                                    else If Not MsgSupp then
-                                        message('Vendor %1 has no claim rebates detected in the data .. check if Auto Delivery Rebate Percentages have been defined',Vend."No.")    
                                 Until Vend.next = 0;
                                 If Cnt > 0 then 
                                 begin 
@@ -550,18 +582,19 @@ page 80044 "PC Campaign_Auto Delivery Proc"
                         If PstDate = 0D then message('Please provide a rebate posting date');
                         If GenLed."Auto Order Rebate Acc" = '' then 
                             message('Auto Order Rebate Acc not defined in General Ledger Setup.');
+                        If GenLed."Campaign Rebate Acc" = '' then 
+                            message('Campaign Rebate Acc not defined in General Ledger Setup.');
                     end;
                     SetFilters();
                 end;
             }
-            action("Auto Order Management")
+            action("Rebate Management")
             {
                 ApplicationArea = All;
                 trigger OnAction();
                 var
-                    Pg:Page "PC Supplier Brand Rebates";
+                    Pg:Page "PC Campaign Rebates";
                 begin    
-                    Pg.Set_Page_Mode(1,'');
                     Pg.RunModal();
                 end;    
             }
@@ -590,8 +623,12 @@ page 80044 "PC Campaign_Auto Delivery Proc"
             SINV.Setfilter("Shopify Order Date",'%1..',PostDate[1])
         else if (Postdate[2] <> 0D) then
             SINV.Setfilter("Shopify Order Date",'..%1',PostDate[2]);
-        If Supp <> '' then SINV.Setrange("Supplier No.",Supp);
-        If Brd <> '' then SINV.setrange(Brand,Brd);
+        Case Mode of 
+            Mode::"Auto Delivery":
+                If Supp <> '' then SINV.Setrange("Auto Delivery Rebate Supplier",Supp);
+            else    
+                If Supp <> '' then SINV.Setrange("Campaign Rebate Supplier",Supp);
+        End;
         if Claim <> Claim::All then SINV.Setrange("Palatability Status",claim - 1);
         If Sinv.Findset then
         repeat
@@ -678,19 +715,12 @@ page 80044 "PC Campaign_Auto Delivery Proc"
         else
             exit(Profits[2]/SInvLine.Count);
     end;
-    local procedure Get_Auto_Claim_Amount():Decimal;
-    var
-        SupReb:record "PC Supplier Brand Rebates";
-    begin
-        SupReb.Reset;
-        SupReb.Setrange(Brand,Rec.Brand);
-        If SupReb.Findset then Exit(Rec."Unit Cost" * Rec.Quantity * SupReb."Auto Order Rebate %"/100);    
-        Exit(0);    
-    end;
-
     trigger OnOpenPage()
     begin
         Clear(Postdate);
+        ColFlg1 := True;
+        ColFlg2 := False;
+        Refress_data_msg(True);
     end;
     var
         Supp:Code[20];
@@ -698,11 +728,9 @@ page 80044 "PC Campaign_Auto Delivery Proc"
         ReasLst:Text;
         Postdate:Array[2] of date;
         PstDate:date;
-        Brd:Code[30];
         Claim:option All,Unclaimed,Claimed;
         Mode:Option Compaign,"Auto Delivery";
         RefMsg:text;
         ColFlg1:Boolean;
         ColFlg2:Boolean;
-         
 }

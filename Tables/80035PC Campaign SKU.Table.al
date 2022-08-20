@@ -58,6 +58,7 @@ table 80035 "PC Campaign SKU"
         }
         field(50; "Rebate Amount"; Decimal)
         {
+            Caption = 'Rebate %';
         }
     }
     keys

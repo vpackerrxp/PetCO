@@ -376,8 +376,6 @@ page 80006 "PC Shopify Orders"
                     begin
                         If Confirm('Preform A Credit Correction Now',False) then;
                     end;    
-
-
                 }
                 field("Gift Card Total"; rec."Gift Card Total")
                 {
@@ -454,21 +452,17 @@ page 80006 "PC Shopify Orders"
                         Excp: Record "PC Shopify Order exceptions";
                         Sel:Integer;
                     begin
-                        If Proc <> '*' then 
+                        If Rec."Order Status" = Rec."Order Status"::Open then
                         begin
-                            if Confirm('Attempt to reprocess this order Now', True) then 
+                            if Confirm('Attempt to process this order Now', True) then 
                             begin
-                                If Proc = 'Process' then        
-                                    Sel := StrMenu('Via Fulfilio Check,ByPass Fulfilio Check',1)
-                                else
-                                    Sel := 1;    
-                                If Sel > 0 then
-                                begin
-                                    Excp.Reset;
-                                    Excp.Setrange(ShopifyID, rec.ID);
-                                    If Excp.Findset then Excp.Deleteall;
-                                    If Sel = 1 then
-                                    begin 
+                                Case StrMenu('Via Fulfilio Check,ByPass Fulfilio Check',1) of
+                                    0:Exit;
+                                    1:
+                                    begin
+                                        Excp.Reset;
+                                        Excp.Setrange(ShopifyID, rec.ID);
+                                        If Excp.Findset then Excp.Deleteall;
                                         Rec."Fulfilo Shipment Status" := Rec."Fulfilo Shipment Status"::InComplete;
                                         Rec.modify(false);
                                         CurrPage.update(true);        

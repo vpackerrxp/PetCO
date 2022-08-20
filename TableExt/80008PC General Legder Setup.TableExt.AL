@@ -31,6 +31,7 @@ tableextension 80008 "PC General Ledger Setup Ext" extends "General Ledger Setup
         field(80006;"New DC Pipline Rebate Acc"; Code[20])
         {
             TableRelation = "G/L Account";
+            ObsoleteState = Removed;
         }
         field(80007;"New DC Pipline Rebate %"; Decimal)
         {
@@ -56,6 +57,7 @@ tableextension 80008 "PC General Ledger Setup Ext" extends "General Ledger Setup
         field(80012;"$0 Sales/Cust Make Good Acc"; Code[20])
         {
             TableRelation = "G/L Account";
+            ObsoleteState = Removed;
         }
         field(80013;"Shopify Pay Clearing Acc"; Code[20])
         {
@@ -78,6 +80,18 @@ tableextension 80008 "PC General Ledger Setup Ext" extends "General Ledger Setup
             TableRelation = "G/L Account";
         }
         field(80018;"Misc Clearing Acc"; Code[20])
+        {
+            TableRelation = "G/L Account";
+        }
+        field(80019;"Campaign Rebate Acc"; Code[20])
+        {
+            TableRelation = "G/L Account";
+        }
+        field(80020;"Auto Order Rebate Posting Acc"; Code[20])
+        {
+            TableRelation = "G/L Account";
+        }
+        field(80021;"Campaign Rebate Posting Acc"; Code[20])
         {
             TableRelation = "G/L Account";
         }

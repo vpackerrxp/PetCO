@@ -65,7 +65,7 @@ pageextension 80003 "PC Customer List Ext" extends "Customer List"
                 PromotedCategory = Category10;
                 trigger OnAction()
                 begin
-                    Case StrMenu('Refunds,VetChat,Zero $,Auto Delivery,Analysis',1) of
+                    Case StrMenu('Refunds,VetChat,Zero $,Campaigns/Auto Delivery,Analysis',1) of
                         1:PAGE.Run(PAGE::"PC Refund Processing");
                         2:PAGE.Run(PAGE::"PC Sales VetChat");
                         3:Page.Run(Page::"PC Zero Dollar Process");

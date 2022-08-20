@@ -2185,8 +2185,10 @@ Codeunit 80002 "PC Import Export Routines"
         CRLF[1] := 13;
         CRLF[2] := 10;
         BlobTmp.CreateOutStream(OutStrm);
-        OutStrm.WriteText('Rebate Supplier No./SKU,Campaign Code/Campaign Price,Campaign Type/Rebate Amount,Campaign Start Date,Campaign End Date' + CRLF);
+        OutStrm.WriteText('Rebate Supplier No.,Campaign Code,Campaign Type,Campaign Start Date,Campaign End Date' + CRLF);
         OutStrm.WriteText(',,' + Format(TempType) + ',,' + CRLF);
+        OutStrm.WriteText(',,,,,' + CRLF);
+        OutStrm.WriteText('Campaign SKUs,Campaign Code,Campaign Price,Rebate %' + CRLF);
         FileName := 'Campaign_Export.csv'; 
         BlobTmp.CreateInStream(InStrm);
         DownloadFromStream(Instrm,'Campaign Template Export','','',FileName);
@@ -2205,7 +2207,7 @@ Codeunit 80002 "PC Import Export Routines"
         CRLF[1] := 13;
         CRLF[2] := 10;
         BlobTmp.CreateOutStream(OutStrm);
-        OutStrm.WriteText('Rebate Supplier No./SKU,Campaign Code/Campaign Price,Campaign Type/Rebate Amount,Campaign Start Date,Campaign End Date' + CRLF);
+        OutStrm.WriteText('Rebate Supplier No,Campaign Code,Campaign Type,Campaign Start Date,Campaign End Date' + CRLF);
         CmpReb.Reset;
         CmpReb.SetRange(Campaign,Camp);
         CmpReb.findset;
@@ -2219,11 +2221,13 @@ Codeunit 80002 "PC Import Export Routines"
         end
         else
             OutStrm.WriteText(',' + CRLF);
+        OutStrm.WriteText('Campaign SKUs,Campaign Code,Campaign Price,Rebate %' + CRLF);
         CmpSku.Reset;
         CmpSku.Setrange(Campaign,CmpReb.Campaign);
         If CmpSku.Findset then 
         repeat
             OutStrm.WriteText(CmpSku.SKU + ',');
+            OutStrm.WriteText(CmpSku.Campaign + ',');
             If CmpReb."Rebate Type" = CmpReb."Rebate Type"::Campaign then
             Begin
                 OutStrm.WriteText(Format(CmpSku."Campaign Price",0,'<Precision,2><Standard Format,1>') + ',');
@@ -2242,6 +2246,8 @@ Codeunit 80002 "PC Import Export Routines"
         ImpData:record "PC Campaign SKU" temporary;
         Dates:array[2] of Date;
         Vars:Array[3] of code[20];
+        CList:List of [Text];
+        Flg:Boolean;
         Vend:record Vendor;
         Item:Record Item;    
         CmpReb:record "PC Campaign Rebates";
@@ -2249,135 +2255,180 @@ Codeunit 80002 "PC Import Export Routines"
         Flds:list of [text];
         FData:Text;
         Instrm:InStream;
+        Outstrm:OutStream;
         FileName:Text;
-        SPrice:record "PC Shopfiy Pricing";
         Cnt:Integer;
+        i:Integer;
+        SkipCnt:Integer;
+        BlobTmp:Codeunit "Temp Blob";
         Win:Dialog;
         CU:Codeunit "PC Shopify Routines";
      begin
-        ImpData.Reset;
-        If ImpData.findset then ImpData.DeleteAll();
         if File.UploadIntoStream('Campaign Import','','',FileName,Instrm) then
         Begin
+            BlobTmp.CreateOutStream(Outstrm);
+            CopyStream(Outstrm,Instrm);
+            Clear(Instrm);
+            BlobTmp.CreateInStream(Instrm);
             If GuiAllowed then Win.Open('Processing Campaign Item #1#################');
             Clear(Cnt);
-            While Not Instrm.EOS  do
+            Flg := True;
+            While Not Instrm.EOS AND Flg do
             begin
-                Cnt +=1;
                 Instrm.ReadText(FData);
+                Cnt += 1;
                 If StrLen(FData) > 0 then
                 begin
-                    Flds := FData.Split(',');
-                    If Cnt = 2 then
+                    If (Fdata.Split(',').get(1).ToUpper().Contains('SUP-')) then
+                        Clist.Add(FData)
+                    else if Fdata.Split(',').get(3).ToUpper().Contains('PRICE') then 
+                        Clear(Flg); 
+                end;
+            end;
+            If flg then Error('Could not locate Campaign SKU start position in the file');
+            For i := 1 to Clist.Count do
+            begin
+                Flds := Clist.Get(i).Split(',');
+                Clear(Dates);
+                Clear(Vars);
+                if Flds.Count < 3 then Error('Rebate Vendor,Campaign Code and Campaign type must be defined');
+                Vars[1] := Flds.Get(1).ToUpper();
+                If Not Vend.Get(Vars[1]) then Error('Rebate Vendor Does Not Exist');    
+                Vars[2] := Flds.Get(2).ToUpper();
+                If Vars[2] = '' then error('Campaign Not Defined');
+                CmpReb.reset;
+                CmpReb.Setrange(Campaign,Vars[2]);
+                If CmpReb.findset then Error(StrSubStno('Campaign Code %1 Already exists',Vars[2]));
+                Vars[3] := Flds.Get(3).ToUpper();
+                If Vars[3] = '' then error('Campaign Type Not Defined');
+                If Vars[3] = 'CAMPAIGN' then
+                begin
+                    If Flds.count < 5 then Error('Campaign Start and End Dates must be defined');
+                    If Not Evaluate(Dates[1],Flds.Get(4)) then
+                        Error('Failed to validate the Campaign Start Date');
+                    If Not Evaluate(Dates[2],Flds.Get(5)) then
+                        Error('Failed to validate the Campaign End Date');
+                    If (Dates[1] = 0D) Or (Dates[2] = 0D) then
+                        Error('Both Start date and End date must be defined');
+                    If Dates[1] > Dates[2] then
+                        Error('Start date Exceeds End Date');
+                    If Dates[2] < Today then
+                        Error('End date is less than today date');
+                    // check for campaign overlapps
+                    CmpReb.reset;
+                    CmpReb.Setrange("Rebate Supplier No.",Vars[1]);
+                    CmpReb.Setrange("Rebate Type",CmpReb."Rebate Type"::Campaign);
+                    If CmpReb.findset then
+                    repeat
+                        If ((Dates[1] >= CmpReb."Campaign Start Date") AND (Dates[1] <= CmpReb."Campaign End Date"))
+                        Or ((Dates[2] >= CmpReb."Campaign Start Date") AND (Dates[2] <= CmpReb."Campaign End Date")) then 
+                                Error(Strsubstno('Campaign Dates Overlapps with existing Campaign %1 dates',CmpReb.Campaign));
+                    until CmpReb.next = 0;        
+                end;
+                ImpData.Reset;
+                If ImpData.findset then ImpData.DeleteAll();
+                Clear(Instrm);
+                BlobTmp.CreateInStream(Instrm);
+                Clear(SkipCnt);
+                Clear(Flg);
+                While Not Instrm.EOS do
+                begin
+                    Instrm.ReadText(FData);
+                    SkipCnt += 1;
+                    If SkipCnt > Cnt then 
                     begin
-                        Clear(Dates);
-                        Clear(Vars);
-                        if Flds.Count < 3 then Error('Rebate Vendor,Campaign Code and Campaign type must be defined');
-                        Vars[1] := Flds.Get(1).ToUpper();
-                        If Not Vend.Get(Vars[1]) then Error('Rebate Vendor Does Not Exist');    
-                        Vars[2] := Flds.Get(2).ToUpper();
-                        If Vars[2] = '' then error('Campaign Not Defined');
-                        CmpReb.reset;
-                        CmpReb.Setrange(Campaign,Vars[2]);
-                        If CmpReb.findset then Error(StrSubStno('Campaign Code %1 Already exists',Vars[2]));
-                        Vars[3] := Flds.Get(3).ToUpper();
-                        If Vars[3] = '' then error('Campaign Type Not Defined');
-                        If Vars[3] = 'CAMPAIGN' then
+                        Flds := FData.Split(',');
+                        If Flds.Count < 4 then
+                            Error('SKU,Campaign code,Sell Price,And Rebate % must be Defined');
+                        If Flds.get(2) = Vars[2] then
                         begin
-                            If Flds.count < 5 then Error('Campaign Start and End Dates must be defined');
-                            If Not Evaluate(Dates[1],Flds.Get(4)) then
-                                Error('Failed to validate the Campaign Start Date');
-                            If Not Evaluate(Dates[2],Flds.Get(5)) then
-                                Error('Failed to validate the Campaign End Date');
-                            If (Dates[1] = 0D) Or (Dates[2] = 0D) then
-                                Error('Both Start date and End date must be defined');
-                            If Dates[1] > Dates[2] then
-                                Error('Start date Exceeds End Date');
-                            // check for campaign overlapps
-                            CmpReb.reset;
-                            CmpReb.Setrange("Rebate Supplier No.",Vars[1]);
-                            CmpReb.Setrange("Rebate Type",CmpReb."Rebate Type"::Campaign);
-                            If CmpReb.findset then
-                            repeat
-                                If ((Dates[1] >= CmpReb."Campaign Start Date") AND (Dates[1] <= CmpReb."Campaign End Date"))
-                                Or ((Dates[2] >= CmpReb."Campaign Start Date") AND (Dates[2] <= CmpReb."Campaign End Date")) then 
-                                    Error(Strsubstno('Campaign Dates Overlapps with Campaign %1 dates',CmpReb.Campaign));
-                            until CmpReb.next = 0;        
-                        end;
-                    end
-                    else if Cnt > 2 then
-                    begin
-                        If Flds.Count < 3 then
-                            Error('SKU,Sell Price and Rebate Price must be Defined');
-                        ImpData.init;
-                        ImpData.Campaign := Vars[2];
-                        ImpData.SKU := Flds.get(1).ToUpper();
-                        if ImpData.SKU = '' Then Error('SKU Not defined');
-                        If Not Item.Get(ImpData.SKU) then
-                            Error(StrsubStno('SKU %1 does not exist',ImpData.SKU));
-                        If Not Evaluate(ImpData."Campaign Price",Flds.get(2)) then
-                            Error(Strsubstno('Invalid Sell Price %1 For SKU %2',Flds.get(2),ImpData.SKU));
-                        If ImpData."Campaign Price" <= 0 then
-                            Error('Campaign price <= 0 is invalid');    
-                        If Not Evaluate(ImpData."Rebate Amount",Flds.get(3)) then
-                            Error(Strsubstno('Invalid Rebate Amount %1 For SKU %2',Flds.get(3),ImpData.SKU));
-                        If ImpData."Rebate Amount" <= 0 then
-                            Error('Rebate Amount <= 0 is invalid');    
-                        If Not ImpData.insert then
-                            Error(StrSubstNo('SKU %1 has been defined multiple times',ImpData.SKU));
-                        if Vars[3] <> 'CAMPAIGN' then
-                        begin
+                            ImpData.init;
+                            ImpData.Campaign := Vars[2];
+                            ImpData.SKU := Flds.get(1).ToUpper();
+                            if ImpData.SKU = '' Then Error('SKU Not defined');
+                            If Not Item.Get(ImpData.SKU) then
+                                Error(StrsubStno('SKU %1 does not exist',ImpData.SKU));
+                            If Not Evaluate(ImpData."Rebate Amount",Flds.get(4)) then
+                                Error(Strsubstno('Invalid Rebate percentage %1 For SKU %2',Flds.get(4),ImpData.SKU));
+                            If (ImpData."Rebate Amount" <= 0) Or (ImpData."Rebate Amount" > 100) then
+                                Error('Rebate % <= 0 Or > 100 is invalid');
+                            if Vars[3] = 'CAMPAIGN' then
+                            begin
+                                If Not Evaluate(ImpData."Campaign Price",Flds.get(3)) then
+                                    Error(Strsubstno('Invalid Sell Price %1 For SKU %2',Flds.get(2),ImpData.SKU));
+                                If ImpData."Campaign Price" <= 0 then
+                                    Error('Campaign price <= 0 is invalid');
+                                // Here we make sure that the Sku is not mixed with different vendors
+                                CmpReb.Reset;
+                                CmpReb.Setrange("Rebate Type",CmpReb."Rebate Type"::Campaign);
+                                CmpReb.SetFilter("Rebate Supplier No.",'<>%1',Vars[1]);
+                                If CmpReb.findset then
+                                repeat
+                                    CmpSku.Reset;
+                                    CmpSku.Setrange(Campaign,CmpReb.Campaign);
+                                    CmpSku.Setrange(SKU,ImpData.SKU);
+                                    If CmpSku.findset then
+                                        Error(StrsubStno('SKU %1 is already assigned to Rebate Vendor %2 Campaign %3',
+                                                                                ImpData.SKU,CmpReb."Rebate Supplier No.",cmpSku.Campaign));
+                                Until CmpReb.Next = 0;
+                            end
+                            Else
+                            begin
+                                CmpReb.Reset;
+                                CmpReb.Setrange("Rebate Type",CmpReb."Rebate Type"::"Auto Delivery");
+                                If CmpReb.findset then
+                                repeat
+                                    CmpSku.Reset;
+                                    CmpSku.Setrange(Campaign,CmpReb.Campaign);
+                                    CmpSku.Setrange(SKU,ImpData.SKU);
+                                    If CmpSku.findset then
+                                        Error(StrsubStno('SKU %1 is already assigned to Campaign %2',ImpData.SKU,CmpSku.Campaign));
+                                Until CmpReb.Next = 0;
+                            end;
+                            If Not ImpData.insert then
+                                Error(StrSubstNo('SKU %1 has been defined multiple times',ImpData.SKU));
+                            If GuiAllowed then Win.update(1,ImpData.SKU);             
                             CmpReb.Reset;
+                            CmpReb.Setrange("Rebate Supplier No.",Vars[1]);
+                            CmpReb.Setrange(Campaign,Vars[2]);
                             CmpReb.Setrange("Rebate Type",CmpReb."Rebate Type"::"Auto Delivery");
-                            If CmpReb.findset then
+                            If Vars[3] = 'CAMPAIGN' then
+                                CmpReb.Setrange("Rebate Type",CmpReb."Rebate Type"::Campaign);
+                            If not CmpReb.findset then
+                            begin
+                                CmpReb.Init();
+                                CmpReb."Rebate Supplier No." := Vars[1];
+                                CmpReb.Campaign := Vars[2];
+                                CmpReb."Rebate Type" := CmpReb."Rebate Type"::"Auto Delivery";
+                                If Vars[3] = 'CAMPAIGN' then
+                                    CmpReb."Rebate Type" := CmpReb."Rebate Type"::Campaign;
+                                CmpReb."Campaign Start Date" := Dates[1];
+                                CmpReb."Campaign End Date" := Dates[2];
+                                CmpReb.insert;
+                            end;    
+                            ImpData.Reset();
+                            If ImpData.findset then
                             repeat
-                                CmpSku.Reset;
+                                CmpSku.reset;
                                 CmpSku.Setrange(Campaign,CmpReb.Campaign);
                                 CmpSku.Setrange(SKU,ImpData.SKU);
-                                If CmpSku.findset then
-                                    Error(StrsubStno('SKU %1 is already assigned to Campaign %2',ImpData.SKU,CmpSku.Campaign));
-                            Until CmpReb.Next = 0;
-                        end;                            
-                        If GuiAllowed then Win.update(1,ImpData.SKU);             
-                    end;    
+                                If not CmpSku.Findset then
+                                begin
+                                    CmpSku.Init;
+                                    CmpSku.Campaign := ImpData.Campaign;
+                                    CmpSku.SKU := ImpData.SKU;
+                                    CmpSku.validate("Campaign Price",ImpData."Campaign Price");
+                                    CmpSku."Rebate Amount" := ImpData."Rebate Amount";
+                                    CmpSku.Insert;
+                                end;
+                            Until ImpData.next = 0;
+                            Commit;
+                        end;
+                    end;     
                 end;
-            end;    
-        end;
-        CmpReb.Reset;
-        CmpReb.Setrange("Rebate Supplier No.",Vars[1]);
-        CmpReb.Setrange(Campaign,Vars[2]);
-        CmpReb.Setrange("Rebate Type",CmpReb."Rebate Type"::"Auto Delivery");
-        If Vars[3] = 'CAMPAIGN' then
-            CmpReb.Setrange("Rebate Type",CmpReb."Rebate Type"::Campaign);
-        If not CmpReb.findset then
-        begin
-            CmpReb.Init();
-            CmpReb."Rebate Supplier No." := Vars[1];
-            CmpReb.Campaign := Vars[2];
-            CmpReb."Rebate Type" := CmpReb."Rebate Type"::"Auto Delivery";
-            If Vars[3] = 'CAMPAIGN' then
-                CmpReb."Rebate Type" := CmpReb."Rebate Type"::Campaign;
-            CmpReb."Campaign Start Date" := Dates[1];
-            CmpReb."Campaign End Date" := Dates[2];
-            CmpReb.insert;
-        end;    
-        ImpData.Reset();
-        If ImpData.findset then
-        repeat
-            CmpSku.reset;
-            CmpSku.Setrange(Campaign,CmpReb.Campaign);
-            CmpSku.Setrange(SKU,ImpData.SKU);
-            If not CmpSku.Findset then
-            begin
-                CmpSku.Init;
-                CmpSku.Campaign := ImpData.Campaign;
-                CmpSku.SKU := ImpData.SKU;
-                CmpSku.validate("Campaign Price",ImpData."Campaign Price");
-                CmpSku."Rebate Amount" := ImpData."Rebate Amount";
-                CmpSku.Insert;
             end;
-        Until ImpData.next = 0;
+        end;
         If GuiAllowed then Win.Close;
         Cu.Correct_Sales_Prices('');
-    end;
+    end;    
 }

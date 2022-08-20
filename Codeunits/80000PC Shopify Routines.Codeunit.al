@@ -3597,7 +3597,7 @@ codeunit 80000 "PC Shopify Routines"
                  end;
             end;     
     end;
-    local procedure Add_Rebate_Entries(var SLine:record "Sales Line";var Lineno:Integer;Var RebateTot:Decimal)
+    local procedure Add_Rebate_Entries(var SLine:record "Sales Line";var Lineno:Integer;Var RebateTot:Array[2] of Decimal)
     var
         CmpReb:Record "PC Campaign Rebates";
         CmpSku:record "PC Campaign SKU";
@@ -3605,6 +3605,7 @@ codeunit 80000 "PC Shopify Routines"
         i:Integer;
         RunFlg:Boolean;
         GLSetup:Record "General Ledger Setup";
+        PurchCst:record "PC Purchase Pricing";
     begin
         GLSetup.get;
         For i := 1 to 2 do
@@ -3633,35 +3634,42 @@ codeunit 80000 "PC Shopify Routines"
                     CmpSku.Setrange(SKU,SLine."No.");
                     If CmpSku.findset then
                     begin
-                        LineNo += 10;
-                        Clear(SalesLine);
-                        SalesLine.init;
-                        SalesLine.Validate("Document Type",SLine."Document Type");
-                        SalesLine.Validate("Document No.",SLine."Document No.");
-                        SalesLine."Line No." := LineNo;
-                        Salesline.insert(true);
-                        SalesLine.Validate(Type,SalesLine.Type::"G/L Account");
-                        If i = 1 then
+                        PurchCst.Reset;
+                        PurchCst.Setrange("Item No.",CmpSku.SKU);
+                        PurchCst.Setrange("Supplier Code",SLine."Rebate Supplier No.");
+                        If PurchCst.Findset then
                         begin
-                            SalesLine.validate("No.",GLSetup."Rebate Accural Acc");
-                            SLine."Campaign Rebate" := True;
-                            SLine."Campaign Rebate Supplier" := CmpReb."Rebate Supplier No.";
-                            SLine."Campaign Rebate Amount" := CmpSku."Rebate Amount" * SLine.Quantity;
-                        end    
-                        else
-                        begin
-                            SalesLine.validate("No.",Glsetup."Auto Order Rebate Acc");
-                            SLine."Auto Delivery Rebate Supplier" := CmpReb."Rebate Supplier No.";
-                            Sline."Auto Delivery Rebate Amount" := CmpSku."Rebate Amount" * SLine.Quantity;
-                        end;    
-                        SalesLine.Validate(Quantity,SLine.Quantity);
-                        Salesline.Validate("Unit Price",CmpSku."Rebate Amount");
-                        RebateTot += CmpSku."Rebate Amount" * SLine.Quantity;
-                        Salesline."Shopify Order ID" := SLine."Shopify Order ID";
-                        SalesLine."Shopify Order Date" := Sline."Shopify Order Date";
-                        SalesLine."Rebate Supplier No." := CmpReb."Rebate Supplier No.";
-                        Salesline.Modify(true)
-                    end;
+                            LineNo += 10;
+                            Clear(SalesLine);
+                            SalesLine.init;
+                            SalesLine.Validate("Document Type",SLine."Document Type");
+                            SalesLine.Validate("Document No.",SLine."Document No.");
+                            SalesLine."Line No." := LineNo;
+                            Salesline.insert(true);
+                            SalesLine.Validate(Type,SalesLine.Type::"G/L Account");
+                            // Rebate Amount entered as a percentage now
+                            If i = 1 then
+                            begin
+                                SalesLine.validate("No.",GLSetup."Campaign Rebate Posting Acc");
+                                SLine."Campaign Rebate" := True;
+                                SLine."Campaign Rebate Supplier" := CmpReb."Rebate Supplier No.";
+                                SLine."Campaign Rebate Amount" := ((PurchCst."Unit Cost" * CmpSku."Rebate Amount")/100) * SLine.Quantity;
+                            end    
+                            else
+                            begin
+                                SalesLine.validate("No.",Glsetup."Auto Order Rebate Posting Acc");
+                                SLine."Auto Delivery Rebate Supplier" := CmpReb."Rebate Supplier No.";
+                                Sline."Auto Delivery Rebate Amount" := ((PurchCst."Unit Cost" * CmpSku."Rebate Amount")/100) * SLine.Quantity;
+                            end;    
+                            SalesLine.Validate(Quantity,SLine.Quantity);
+                            Salesline.Validate("Unit Price",(PurchCst."Unit Cost" * CmpSku."Rebate Amount")/100);
+                            RebateTot[i] += ((PurchCst."Unit Cost" * CmpSku."Rebate Amount")/100) * SLine.Quantity;
+                            Salesline."Shopify Order ID" := SLine."Shopify Order ID";
+                            SalesLine."Shopify Order Date" := Sline."Shopify Order Date";
+                            SalesLine."Rebate Supplier No." := CmpReb."Rebate Supplier No.";
+                            Salesline.Modify(true)
+                        end;
+                    end;    
                 Until CmpReb.next = 0;
         end;
     end;
@@ -3690,6 +3698,7 @@ codeunit 80000 "PC Shopify Routines"
         unit:record "Unit of Measure";
         Result:Boolean;
         i:Decimal;
+        Rindx:Integer;
         win:dialog;
         Excp:Record "PC Shopify Order Exceptions";
         Dim:record Dimension;
@@ -3699,8 +3708,8 @@ codeunit 80000 "PC Shopify Routines"
         PstDate:date;
         Disc:Decimal;
         ProcCnt:Integer;
-        RebateSum:Decimal;
-        RebTotaler:Decimal;
+        RebateSum:Array[2] of Decimal;
+        RebTotaler:Array[2] of Decimal;
     begin
         Result := True;
         If Not Res.get('CUSTRETURN') then
@@ -3783,20 +3792,42 @@ codeunit 80000 "PC Shopify Routines"
             Item.Validate("Base Unit of Measure",'EA');
             Item.modify();
         end;
-        if Not Item.Get('REBATE_REVERSAL') then
+        if Not Item.Get('REBATE_REV_AUTO') then
         begin
             Item.init;
-            Item.validate("No.",'REBATE_REVERSAL');
+            Item.validate("No.",'REBATE_REV_AUTO');
             Item.Insert();
             Item.Description := 'Do not remove used internally';
             Item.Type := Item.Type::"Non-Inventory";
             Item."Shopify Item" := Item."Shopify Item"::internal;
-            Item.validate("Gen. Prod. Posting Group",'FREIGHTOUT');
-            Item.validate("VAT Prod. Posting Group",'GST10');
-            If Not ItemUnit.get('REBATE_REVERSAL','EA') then
+            Item.validate("Gen. Prod. Posting Group",'REBATE AUTO');
+            Item.validate("VAT Prod. Posting Group",'NO GST');
+            If Not ItemUnit.get('REBATE_REV_AUTO','EA') then
             begin
                 Itemunit.init;
-                ItemUnit."Item No." := 'REBATE_REVERSAL';
+                ItemUnit."Item No." := 'REBATE_REV_AUTO';
+                ItemUnit.Code := 'EA';
+                ItemUnit."Qty. per Unit of Measure" := 1;
+                ItemUnit.Insert;
+                Commit;
+            end; 
+            Item.Validate("Base Unit of Measure",'EA');
+            Item.modify();
+        end;
+        if Not Item.Get('REBATE_REV_CAMP') then
+        begin
+            Item.init;
+            Item.validate("No.",'REBATE_REV_CAMP');
+            Item.Insert();
+            Item.Description := 'Do not remove used internally';
+            Item.Type := Item.Type::"Non-Inventory";
+            Item."Shopify Item" := Item."Shopify Item"::internal;
+            Item.validate("Gen. Prod. Posting Group",'REBATE CAMP');
+            Item.validate("VAT Prod. Posting Group",'NO GST');
+            If Not ItemUnit.get('REBATE_REV_CAMP','EA') then
+            begin
+                Itemunit.init;
+                ItemUnit."Item No." := 'REBATE_REV_CAMP';
                 ItemUnit.Code := 'EA';
                 ItemUnit."Qty. per Unit of Measure" := 1;
                 ItemUnit.Insert;
@@ -3894,6 +3925,8 @@ codeunit 80000 "PC Shopify Routines"
         end;
         Clear(PstDate);
         GLSetup.get;
+        If (GLSetup."Auto Order Rebate Posting Acc" = '') Or (GLSetup."Campaign Rebate Posting Acc" = '') then
+            Error('Rebate posting accounts have not been defined');
         If (GLSetup."Allow Posting To" <> 0D) And (GLSetup."Allow Posting To" < Today) then
         begin
             PstDate := GLSetup."Allow Posting To";
@@ -3960,7 +3993,7 @@ codeunit 80000 "PC Shopify Routines"
             end;
             If Result then
             begin
-               if GuiAllowed Then Win.Open('Processing Order Data @1@@@@@@@@@@@@@@@@@@@');
+                if GuiAllowed Then Win.Open('Processing Order Data @1@@@@@@@@@@@@@@@@@@@');
                 For Loop := 1 to 2 do
                 begin
                     PCOrdHdr[1].reset;
@@ -3984,7 +4017,7 @@ codeunit 80000 "PC Shopify Routines"
                             Clear(LineNo);
                             Clear(SalesHdr);
                             SalesHdr.init;
-                            if Loop in [1,3] then
+                            if Loop = 1 then
                                 SalesHdr.validate("Document Type",SalesHdr."Document Type"::Invoice)
                             else
                                 SalesHdr.validate("Document Type",SalesHdr."Document Type"::"Credit Memo");
@@ -4046,11 +4079,8 @@ codeunit 80000 "PC Shopify Routines"
                                 SalesLine."Rebate Supplier No." := Item."Vendor No.";
                                 SalesLine."Rebate Brand" := Item.Brand;
                                 OrdType := 'STANDARD';
-                                If PCOrdLin."Auto Delivered" then
-                                begin
-                                    OrdType := 'AUTO ORDER';
-                                    SalesLine."Auto Delivered" := True;
-                                end;    
+                                SalesLine."Auto Delivered" := PCOrdLin."Auto Delivered";
+                                If SalesLine."Auto Delivered" then OrdType := 'AUTO ORDER';
                                 Salesline."Dimension Set ID" := Get_Dim_Set_Id(PCOrdHdr[1]."Shopify Order Member Status",OrdType,Item."No.");
                             /*    SalesLine."Auto Delivered" := (PCOrdHdr[1]."Shopify Order Member Status" = 'GOLD') Or 
                                                                 (PCOrdHdr[1]."Shopify Order Member Status" = 'PLATINUM') OR 
@@ -4098,8 +4128,9 @@ codeunit 80000 "PC Shopify Routines"
                         end
                         else
                         Begin
-                            RebateSum += RebTotaler;
-                            // Now see if any shipping is defined against this Shopify Order
+                            RebateSum[1] += RebTotaler[1]; // Campaign Totaler
+                            RebateSum[2] += RebTotaler[2]; // Auto Order Totaler
+                           // Now see if any shipping is defined against this Shopify Order
                             If PCOrdHdr[1]."Freight Total" > 0 then
                             begin
                                 LineNo += 10;
@@ -4195,26 +4226,36 @@ codeunit 80000 "PC Shopify Routines"
                         If ProcCnt >= 500 then
                         begin
                             Clear(ProcCnt);
-                            If RebateSum > 0 then
+                            If Loop = 1 then
                             begin
-                                LineNo += 10;
-                                Clear(SalesLine);
-                                SalesLine.init;
-                                SalesLine.Validate("Document Type",SalesHdr."Document Type");
-                                SalesLine.Validate("Document No.",SalesHdr."No.");
-                                SalesLine."Line No." := LineNo;
-                                Salesline.insert(true);
-                                SalesLine.Validate(Type,SalesLine.TYpe::Item);
-                                SalesLine.validate("No.",'REBATE_REVERSAL');
-                                SalesLine.Validate("VAT Prod. Posting Group",'NO GST');
-                                SalesLine.Validate("Unit of Measure Code",'EA');    
-                                SalesLine.Validate(Quantity,1);
-                                Clear(Salesline."Auto Delivered");
-                                Salesline.Validate("Unit Price",-RebateSum);
-                                SalesLine.Modify(true);
-                                Clear(RebateSum);
-                            end;
-                            If Loop = 2 then SalesHdr."Reason Code" := 'CUSTRETURN'; 
+                                For Rindx := 1 to 2 Do
+                                Begin
+                                    If RebateSum[Rindx] > 0 then
+                                    begin
+                                        LineNo += 10;
+                                        Clear(SalesLine);
+                                        SalesLine.init;
+                                        SalesLine.Validate("Document Type",SalesHdr."Document Type");
+                                        SalesLine.Validate("Document No.",SalesHdr."No.");
+                                        SalesLine."Line No." := LineNo;
+                                        Salesline.insert(true);
+                                        SalesLine.Validate(Type,SalesLine.TYpe::Item);
+                                        If Rindx = 1 then
+                                            SalesLine.validate("No.",'REBATE_REV_CAMP')
+                                        else
+                                            SalesLine.validate("No.",'REBATE_REV_AUTO');
+                                        SalesLine.Validate("VAT Prod. Posting Group",'NO GST');
+                                        SalesLine.Validate("Unit of Measure Code",'EA');    
+                                        SalesLine.Validate(Quantity,1);
+                                        Clear(Salesline."Auto Delivered");
+                                        Salesline.Validate("Unit Price",-RebateSum[Rindx]);
+                                        SalesLine.Modify(true);
+                                        Clear(RebateSum[Rindx]);
+                                    end;
+                                end;
+                            end 
+                            else 
+                                SalesHdr."Reason Code" := 'CUSTRETURN'; 
                             SalesHdr.Modify(true);
                             Commit;
                             // now release the sales order and attempt to post it now 
@@ -4266,26 +4307,36 @@ codeunit 80000 "PC Shopify Routines"
                         SalesLine.SetRange("Document No.",OrdNo);
                         If SalesLine.Findset then
                         begin
-                            If RebateSum > 0 then
+                            If Loop = 1 then
                             begin
-                                LineNo += 10;
-                                Clear(SalesLine);
-                                SalesLine.init;
-                                SalesLine.Validate("Document Type",SalesHdr."Document Type");
-                                SalesLine.Validate("Document No.",SalesHdr."No.");
-                                SalesLine."Line No." := LineNo;
-                                Salesline.insert(true);
-                                SalesLine.Validate(Type,SalesLine.TYpe::Item);
-                                SalesLine.validate("No.",'REBATE_REVERSAL');
-                                SalesLine.Validate("VAT Prod. Posting Group",'NO GST');
-                                SalesLine.Validate("Unit of Measure Code",'EA');    
-                                SalesLine.Validate(Quantity,1);
-                                Clear(Salesline."Auto Delivered");
-                                Salesline.Validate("Unit Price",-RebateSum);
-                                SalesLine.Modify(true);
-                                Clear(RebateSum);
-                            end;
-                            If Loop = 2 then SalesHdr."Reason Code" := 'CUSTRETURN'; 
+                                For Rindx := 1 to 2 Do
+                                Begin
+                                    If RebateSum[Rindx] > 0 then
+                                    begin
+                                        LineNo += 10;
+                                        Clear(SalesLine);
+                                        SalesLine.init;
+                                        SalesLine.Validate("Document Type",SalesHdr."Document Type");
+                                        SalesLine.Validate("Document No.",SalesHdr."No.");
+                                        SalesLine."Line No." := LineNo;
+                                        Salesline.insert(true);
+                                        SalesLine.Validate(Type,SalesLine.TYpe::Item);
+                                        If Rindx = 1 then
+                                            SalesLine.validate("No.",'REBATE_REV_CAMP')
+                                        else
+                                            SalesLine.validate("No.",'REBATE_REV_AUTO');
+                                        SalesLine.Validate("VAT Prod. Posting Group",'NO GST');
+                                        SalesLine.Validate("Unit of Measure Code",'EA');    
+                                        SalesLine.Validate(Quantity,1);
+                                        Clear(Salesline."Auto Delivered");
+                                        Salesline.Validate("Unit Price",-RebateSum[Rindx]);
+                                        SalesLine.Modify(true);
+                                        Clear(RebateSum[Rindx]);
+                                    end;
+                                end;
+                            end 
+                            else 
+                                SalesHdr."Reason Code" := 'CUSTRETURN'; 
                             SalesHdr.Modify(true);
                             Commit;
                             // now release the sales order and attempt to post it now 

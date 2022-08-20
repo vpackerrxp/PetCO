@@ -37,7 +37,7 @@ pageextension 80011 "PC Genral Ledger Setup Ext" extends "General Ledger Setup"
                         ShowMandatory = true;
                     }
 
-                    field("New DC Pipline Rebate Acc";rec."New DC Pipline Rebate Acc")
+                    field("Campaign Rebate Acc";rec."Campaign Rebate Acc")
                     {
                         ApplicationArea = All;
                         ShowMandatory = true;
@@ -48,7 +48,15 @@ pageextension 80011 "PC Genral Ledger Setup Ext" extends "General Ledger Setup"
                         ApplicationArea = All;
                         ShowMandatory = true;
                     }
-                    field("$0 Sales/Cust Make Good Acc";rec."$0 Sales/Cust Make Good Acc")
+                }
+                Group("Rebate Posting")
+                {
+                    field("Auto Order Rebate Posting Acc";rec."Auto Order Rebate Posting Acc")
+                    {
+                        ApplicationArea = All;
+                        ShowMandatory = true;
+                    }
+                    field("Campaign Rebate PostingAcc";rec."Campaign Rebate Posting Acc")
                     {
                         ApplicationArea = All;
                         ShowMandatory = true;
