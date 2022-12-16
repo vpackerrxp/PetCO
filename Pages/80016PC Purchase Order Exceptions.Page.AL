@@ -9,6 +9,9 @@ page 80016 "PC Purch. Order Exceptions"
     ModifyAllowed = false;
     DeleteAllowed = True;
    
+    PromotedActionCategoriesML = ENU = 'Pet Culture',
+                                 ENA = 'Pet Culture';
+
     layout
     {
         area(Content)

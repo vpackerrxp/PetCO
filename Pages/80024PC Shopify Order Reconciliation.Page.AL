@@ -9,6 +9,9 @@ page 80024 "PC Shopify Order Recon"
     //ModifyAllowed = false;
     //DeleteAllowed = false;
    
+    PromotedActionCategoriesML = ENU = 'Pet Culture',
+                                 ENA = 'Pet Culture';
+
     layout
     {
         area(Content)

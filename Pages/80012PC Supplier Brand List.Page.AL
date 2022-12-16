@@ -7,6 +7,9 @@ page 80012 "PC Supplier Brand List"
     SourceTable = "PC Supplier Brand Rebates";
     Editable = false;
     
+    PromotedActionCategoriesML = ENU = 'Pet Culture',
+                                 ENA = 'Pet Culture';
+
     layout
     {
      area(Content)

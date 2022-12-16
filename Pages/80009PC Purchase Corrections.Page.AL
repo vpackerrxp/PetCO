@@ -9,6 +9,9 @@ page 80009 "PC Purchase Corrections"
     InsertAllowed = false;
     ModifyAllowed = false;
 
+    PromotedActionCategoriesML = ENU = 'Pet Culture',
+                                 ENA = 'Pet Culture';
+
     layout
     {
         area(Content)

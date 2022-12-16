@@ -9,6 +9,9 @@ page 80015 "PC Rebate Payments"
     InsertAllowed = false;
     DeleteAllowed = false;
  
+    PromotedActionCategoriesML = ENU = 'Pet Culture',
+                                 ENA = 'Pet Culture';
+
     layout
     {
         area(Content)
@@ -25,13 +28,13 @@ page 80015 "PC Rebate Payments"
                         begin
                             message('Invalid Start Date ...');
                             Clear(RebDate[1]);
-                        end;        
-                        Calculate_ALL_Rebates(RebDate);    
+                        end;
+                        Refress_data_msg(True);
                     end;
                     trigger OnAssistEdit()
                     begin
                         Clear(RebDate[1]);
-                        Calculate_ALL_Rebates(RebDate);    
+                        Refress_data_msg(True);
                     end;
                 }
                 Field("Rebate End Date Filter";RebDate[2])
@@ -45,14 +48,26 @@ page 80015 "PC Rebate Payments"
                             message('Invalid End Date ...');
                             Clear(RebDate[2]);
                         end;        
-                        Calculate_ALL_Rebates(RebDate);    
+                        Refress_data_msg(True);
                     end;
                     trigger OnAssistEdit()
                     begin
                         Clear(RebDate[2]);
-                        Calculate_ALL_Rebates(RebDate);    
+                        Refress_data_msg(True);
                     end;
                 }
+                field("X";RefMsg)
+                {
+                    ApplicationArea = All;
+                    Style = Unfavorable;
+                    ShowCaption = false;
+                    Editable = False;
+                    trigger OnDrillDown()
+                    begin
+                        Calculate_ALL_Rebates(RebDate,'');    
+                    end;
+                }
+
                 Field("Rebate Posting Date";PstDate)
                 {
                     Caption = 'Rebate Posting Date';
@@ -65,21 +80,22 @@ page 80015 "PC Rebate Payments"
             }
             repeater(A)
             {
-                Field("Supplier No.";rec."No.")
+                Field("Rebate Supplier No.";rec."No.")
                 {
                     ApplicationArea = All;
-                    Caption = 'Purchase Supplier No.';
+                    Caption = 'Rebate Supplier No.';
                     Editable = false;
+                    Style = Strong;
                 }
                 Field(Name;rec.Name)
                 {
                     ApplicationArea = All;
                     Editable = false;
                 }
-                Field("Rebate Supplier No.";rec."Purchaser Code")
+                Field("Supplier No.";rec."Purchaser Code")
                 {
                     ApplicationArea = All;
-                    Caption = 'Rebate Supplier No.';
+                    Caption = 'Purchase Supplier No.';
                     Editable = false;
                 }
                 Field("Volume Rebate Total";rec."Auto Order Rebate %")
@@ -87,6 +103,8 @@ page 80015 "PC Rebate Payments"
                     Caption = 'Volume Rebate Total';
                     ApplicationArea = All;
                     Editable = false;
+                    Style = Favorable;
+                    StyleExpr = Rec."Auto Order Rebate %" > 0;
                 }
                 Field("Volume Rebate Claim";rec."Tax Liable")
                 {
@@ -102,6 +120,8 @@ page 80015 "PC Rebate Payments"
                     Caption = 'Marketing Rebate Total';
                     ApplicationArea = All;
                     Editable = false;
+                    Style = Favorable;
+                    StyleExpr = Rec."Marketing Rebate %" > 0;
                 }
                 Field("Marketing Rebate Claim";rec."Block Payment Tolerance")
                 {
@@ -114,15 +134,17 @@ page 80015 "PC Rebate Payments"
                 }
                 Field("Supply Rebate Total";rec."Supply Chain Rebate %")
                 {
-                    Caption = 'Supply Chain Rebate Total';
+                    Caption = 'Data Share Rebate Total';
                     ApplicationArea = All;
                     Editable = false;
+                    Style = Favorable;
+                    StyleExpr = Rec."Supply Chain Rebate %" > 0;
                 }
                 Field("Supply Rebate Claim";rec."Prices Including VAT")
                 {
-                    Caption = 'Supply Rebate Claim';
+                    Caption = 'Data Share Rebate Claim';
                     ApplicationArea = All;
-                   trigger OnValidate()
+                    trigger OnValidate()
                     begin
                         If rec."Supply Chain Rebate %" = 0 then Clear(rec."Prices Including VAT");
                     end;
@@ -132,19 +154,49 @@ page 80015 "PC Rebate Payments"
                     Caption = 'Rebate Total';
                     ApplicationArea = All;
                     Editable = false;
+                    Style = Strong;
                 }
                 Field("";rec."Name 2")
                 {
                     ShowCaption = false;
                     ApplicationArea = All;
-                    Style = strong;
+                    Style = StrongAccent;
                     Editable = false;
                     trigger OnDrillDown()
                     begin
                         If rec."Name 2" <> '*' then Process_Rebates(RebDate);
                     end;
                 }
-            }    
+            } 
+            Group(Totals)
+            {
+                Field("Volume Totals";Get_Totals(0))
+                {
+                    ApplicationArea = All;
+                    Style = Strong;
+                    Editable = false;
+                }
+                Field("Market Totals";Get_Totals(1))
+                {
+                    ApplicationArea = All;
+                    Style = Strong;
+                    Editable = false;
+                }    
+                Field("Supply Totals";Get_Totals(2))
+                {
+                    ApplicationArea = All;
+                    Style = Strong;
+                    Caption = 'Data Share Totals';
+                    Editable = false;
+                }
+                Field("All Rebate Totals";Get_Totals(3))
+                {
+                    ApplicationArea = All;
+                    Style = Strong;
+                    Editable = false;
+                }
+            }
+
         }
     }
     
@@ -157,12 +209,22 @@ page 80015 "PC Rebate Payments"
        // If Reb.findset Then Reb.Deleteall;
         Lock_Unlock_Purchase_Orders(True);
         Clear(RebDate);
-        Calculate_ALL_Rebates(RebDate);    
+        Calculate_ALL_Rebates(RebDate,'');    
     end;
     trigger OnClosePage()
     begin
         Lock_Unlock_Purchase_Orders(false);
     end;
+    Local procedure Get_Totals(Indx:integer):Decimal
+    begin
+        Rec.CalcSums("Auto Order Rebate %","Marketing Rebate %","Supply Chain Rebate %","Budgeted Amount");
+        Case Indx of
+            0: Exit(Rec."Auto Order Rebate %");    
+            1: Exit(Rec."Marketing Rebate %");    
+            2: Exit(Rec."Supply Chain Rebate %");    
+            3: Exit(Rec."Budgeted Amount");    
+        End;
+    End;
     local procedure Process_Rebates(Dat:array[2] of date)
     var
         PurchHdr:Record "Purchase Header";
@@ -185,7 +247,7 @@ page 80015 "PC Rebate Payments"
         Reb:record "PC Purchase Rebates";
         SupReb:Record "PC Supplier Brand Rebates"; 
    begin
-        If (rec."Budgeted Amount" > 0) And (Pstdate <> 0D) And (Rec."Purchaser Code" <> '') then
+        If (rec."Budgeted Amount" > 0) And (Pstdate <> 0D) then
         begin
             If not Res.Get('REBATES') then
             begin
@@ -200,7 +262,7 @@ page 80015 "PC Rebate Payments"
                     PurchHdr.Init;
                     PurchHdr.Validate("Document Type",PurchHdr."Document Type"::"Credit Memo");
                     PurchHdr.insert(true);
-                    PurchHdr.Validate("Buy-from Vendor No.",rec."Purchaser Code");
+                    PurchHdr.Validate("Buy-from Vendor No.",rec."No.");
                     PurchHdr.validate("Posting Date",PstDate);
                     PurchHdr."Your Reference" := StrSubStno('Rebates as of %1',TODAY);
                     PurchHdr."Reason Code" := res.Code;
@@ -215,89 +277,80 @@ page 80015 "PC Rebate Payments"
                         end;
                         if flg then
                         begin
-                            Reb.Reset; 
-                            Reb.Setrange("Supplier No.",rec."No.");
-                            If (Dat[1] <> 0D) And (Dat[2] <> 0D) then
-                                Reb.Setrange("Rebate Date",Dat[1],Dat[2])
-                            else if Dat[1] <> 0D then    
-                                Reb.SetFilter("Rebate Date",'%1..',Dat[1])
-                            else if Dat[2] <> 0D then    
-                                Reb.SetFilter("Rebate Date",'..%1',Dat[2]);
-                            Reb.Setrange("Rebate Paid",False);
-                            SupReb.Reset;
-                            SupReb.Setrange("Supplier No.",Rec."No.");
-                            Case i of 
-                                1: 
-                                Begin
-                                    Reb.Setrange("Rebate Type",reb."Rebate Type"::Volume);
-                                    SupReb.Setfilter("Volume Rebate %",'>0');
-                                end;    
-                                2: 
-                                begin
-                                    Reb.Setrange("Rebate Type",reb."Rebate Type"::Supply);
-                                    SupReb.Setfilter("Supply Chain Rebate %",'>0');
-                                end;    
-                                3: 
-                                Begin 
-                                    Reb.Setrange("Rebate Type",reb."Rebate Type"::Marketing);
-                                    SupReb.Setfilter("Marketing Rebate %",'>0');
-                                end;    
-                            end;
-                            if SupReb.findset then
-                            repeat
+                            SupReb.Reset();
+                            SupReb.Setrange("Rebate Supplier No.",Rec."No.");
+                            If SupReb.Findset then
+                            Repeat
+                                reb.reset;
+                                reb.Setrange("Supplier No.",SupReb."Supplier No.");
                                 Reb.Setrange(Brand,SupReb.Brand);
+                                Reb.Setrange("Rebate Paid",False);
+                                Case i of 
+                                    1: Reb.Setrange("Rebate Type",Reb."Rebate Type"::Volume);
+                                    2: Reb.Setrange("Rebate Type",Reb."Rebate Type"::"Data Share");
+                                    3: Reb.Setrange("Rebate Type",Reb."Rebate Type"::Marketing);
+                                end;    
+                                If (Dat[1] <> 0D) And (Dat[2] <> 0D) then
+                                    Reb.Setrange("Rebate Date",Dat[1],Dat[2])
+                                else if Dat[1] <> 0D then    
+                                    Reb.SetFilter("Rebate Date",'%1..',Dat[1])
+                                else if Dat[2] <> 0D then    
+                                    Reb.SetFilter("Rebate Date",'..%1',Dat[2]);
                                 If Reb.Findset then
                                 begin
                                     Reb.Calcsums("Rebate Value");
-                                    Lineno += 10000;
-                                    PurchLine.Init;
-                                    Purchline.Validate("Document Type",PurchHdr."Document Type");
-                                    PurchLine.validate("Document No.",PurchHdr."No.");
-                                    Purchline.validate("Line No.",LineNo);
-                                    PurchLine.insert(true);
-                                    PurchLine.validate(Type,PurchLine.Type::"G/L Account");
-                                    Case i of 
-                                        1: 
-                                        begin
-                                            PurchLine.validate("No.",GenLed."Partner Volume Rebate Acc");
-                                            If (Dat[1] <> 0D) and (Dat[2] <> 0D) then
-                                                Purchline.Description := StrSubStno('%1 - %2 %3',Dat[1],Dat[2],SupReb."Volume Rebate %") + '% ' + SupReb.Brand + ' Volume Rebate'
-                                            else if (Dat[1] <> 0D) then
-                                                Purchline.Description := StrSubStno('%1.. %2',Dat[1],SupReb."Volume Rebate %") + '% ' + SupReb.Brand + ' Volume Rebate'
-                                            else if (Dat[2] <> 0D) then
-                                                Purchline.Description := StrSubStno('..%1 %2',Dat[2],SupReb."Volume Rebate %") + '% ' + SupReb.Brand + ' Volume Rebate'
-                                            else
-                                                Purchline.Description := StrSubStno('%1 %2',TODAY,SupReb."Volume Rebate %") + '% ' + SupReb.Brand + ' Volume Rebate';
-                                        end;    
-                                        2: 
-                                        begin
-                                            PurchLine.validate("No.",GenLed."Supply Chain Rebate Acc");
-                                            If (Dat[1] <> 0D) and (Dat[2] <> 0D) then
-                                                Purchline.Description := StrSubStno('%1 - %2 %3',Dat[1],Dat[2],SupReb."Supply Chain Rebate %") + '% ' + SupReb.Brand + ' Supply Rebate'
-                                            else if (Dat[1] <> 0D) then
-                                                Purchline.Description := StrSubStno('%1.. %2',Dat[1],SupReb."Supply Chain Rebate %") + '% ' + SupReb.Brand + ' Supply Rebate'
-                                            else if (Dat[2] <> 0D) then
-                                                Purchline.Description := StrSubStno('..%1 %2',Dat[2],SupReb."Supply Chain Rebate %") + '% ' + SupReb.Brand + ' Supply Rebate'
-                                            else 
-                                                Purchline.Description := StrSubStno('%1 %2',TODAY,SupReb."Supply Chain Rebate %") + '% ' + SupReb.Brand + ' Supply Rebate';
-                                        end;
-                                        3: 
-                                        begin
-                                            PurchLine.validate("No.",GenLed."Marketing Rebate Acc");
-                                            If (Dat[1] <> 0D) and (Dat[2] <> 0D) then
-                                                Purchline.Description := StrSubStno('%1 - %2 %3',Dat[1],Dat[2],SupReb."Marketing Rebate %") + '% ' + SupReb.Brand + ' Marketing Rebate'
-                                            else If (Dat[1] <> 0D) then
-                                                Purchline.Description := StrSubStno('%1.. %2',Dat[1],SupReb."Marketing Rebate %") + '% ' + SupReb.Brand + ' Marketing Rebate'
-                                            else If (Dat[2] <> 0D) then
-                                                Purchline.Description := StrSubStno('..%1 %2',Dat[2],SupReb."Marketing Rebate %") + '% ' + SupReb.Brand + ' Marketing Rebate'
-                                            else    
-                                                Purchline.Description := StrSubStno('%1 %2',Today,SupReb."Marketing Rebate %") + '% ' + SupReb.Brand + ' Marketing Rebate';
-                                        end;
-                                    end; 
-                                    Purchline.validate("Direct Unit Cost",reb."Rebate Value");
-                                    Purchline."Description 2" := SupReb.Brand;
-                                    PurchLine.validate(Quantity,1);
-                                    Purchline.Modify(True);
+                                    If Reb."Rebate Value" > 0 then
+                                    Begin
+                                        Lineno += 10000;
+                                        PurchLine.Init;
+                                        Purchline.Validate("Document Type",PurchHdr."Document Type");
+                                        PurchLine.validate("Document No.",PurchHdr."No.");
+                                        Purchline.validate("Line No.",LineNo);
+                                        PurchLine.insert(true);
+                                        PurchLine.validate(Type,PurchLine.Type::"G/L Account");
+                                        Case i of 
+                                            1: 
+                                            begin
+                                                PurchLine.validate("No.",GenLed."Partner Volume Rebate Acc");
+                                                If (Dat[1] <> 0D) and (Dat[2] <> 0D) then
+                                                    Purchline.Description := StrSubStno('%1 - %2 %3',Dat[1],Dat[2],SupReb."Volume Rebate %") + '% ' + SupReb.Brand + ' Volume Rebate'
+                                                else if (Dat[1] <> 0D) then
+                                                    Purchline.Description := StrSubStno('%1.. %2',Dat[1],SupReb."Volume Rebate %") + '% ' + SupReb.Brand + ' Volume Rebate'
+                                                else if (Dat[2] <> 0D) then
+                                                    Purchline.Description := StrSubStno('..%1 %2',Dat[2],SupReb."Volume Rebate %") + '% ' + SupReb.Brand + ' Volume Rebate'
+                                                else
+                                                    Purchline.Description := StrSubStno('%1 %2',TODAY,SupReb."Volume Rebate %") + '% ' + SupReb.Brand + ' Volume Rebate';
+                                            end;    
+                                            2: 
+                                            begin
+                                                PurchLine.validate("No.",GenLed."Supply Chain Rebate Acc");
+                                                If (Dat[1] <> 0D) and (Dat[2] <> 0D) then
+                                                    Purchline.Description := StrSubStno('%1 - %2 %3',Dat[1],Dat[2],SupReb."Supply Chain Rebate %") + '% ' + SupReb.Brand + ' Data Share Rebate'
+                                                else if (Dat[1] <> 0D) then
+                                                    Purchline.Description := StrSubStno('%1.. %2',Dat[1],SupReb."Supply Chain Rebate %") + '% ' + SupReb.Brand + ' Data Share Rebate'
+                                                else if (Dat[2] <> 0D) then
+                                                    Purchline.Description := StrSubStno('..%1 %2',Dat[2],SupReb."Supply Chain Rebate %") + '% ' + SupReb.Brand + ' Data Share Rebate'
+                                                else 
+                                                    Purchline.Description := StrSubStno('%1 %2',TODAY,SupReb."Supply Chain Rebate %") + '% ' + SupReb.Brand + ' Data Share Rebate';
+                                            end;
+                                            3: 
+                                            begin
+                                                PurchLine.validate("No.",GenLed."Marketing Rebate Acc");
+                                                If (Dat[1] <> 0D) and (Dat[2] <> 0D) then
+                                                    Purchline.Description := StrSubStno('%1 - %2 %3',Dat[1],Dat[2],SupReb."Marketing Rebate %") + '% ' + SupReb.Brand + ' Marketing Rebate'
+                                                else If (Dat[1] <> 0D) then
+                                                    Purchline.Description := StrSubStno('%1.. %2',Dat[1],SupReb."Marketing Rebate %") + '% ' + SupReb.Brand + ' Marketing Rebate'
+                                                else If (Dat[2] <> 0D) then
+                                                    Purchline.Description := StrSubStno('..%1 %2',Dat[2],SupReb."Marketing Rebate %") + '% ' + SupReb.Brand + ' Marketing Rebate'
+                                                else    
+                                                    Purchline.Description := StrSubStno('%1 %2',Today,SupReb."Marketing Rebate %") + '% ' + SupReb.Brand + ' Marketing Rebate';
+                                            end;
+                                        end; 
+                                        Purchline.validate("Direct Unit Cost",reb."Rebate Value");
+                                        Purchline."Description 2" := SupReb.Brand;
+                                        PurchLine.validate(Quantity,1);
+                                        Purchline.Modify(True);
+                                    end;    
                                 end;
                             until SupReb.next = 0;
                         end;                        
@@ -336,7 +389,7 @@ page 80015 "PC Rebate Payments"
                                         end;       
                                     GenLed."Supply Chain Rebate Acc":
                                         begin;
-                                            Reb.Setrange("Rebate Type",Reb."Rebate Type"::Supply);
+                                            Reb.Setrange("Rebate Type",Reb."Rebate Type"::"Data Share");
                                             flg := True;
                                         end;      
                                     GenLed."Marketing Rebate Acc":
@@ -358,14 +411,14 @@ page 80015 "PC Rebate Payments"
                     else
                         PurchHdr.Delete(true);
                     Clear(Rebdate);           
-                    Calculate_ALL_Rebates(Dat);
+                    Calculate_ALL_Rebates(Dat,rec."No.");
                     CurrPage.update(false);        
                 end;
                 2:
                 begin
-                    If Not Cust.Get(rec."Purchaser Code") then
+                    If Not Cust.Get(rec."No.") then
                     begin
-                        Vend.Get(Rec."Purchaser Code");
+                        Vend.Get(Rec."No.");
                         Cust.Init;
                         Cust.Validate("No.",Vend."No.");
                         Cust.Insert();
@@ -400,89 +453,80 @@ page 80015 "PC Rebate Payments"
                         end;
                         if flg then
                         begin
-                            Reb.Reset; 
-                            Reb.Setrange("Supplier No.",rec."No.");
-                            If (Dat[1] <> 0D) And (Dat[2] <> 0D) then
-                                Reb.Setrange("Rebate Date",Dat[1],Dat[2])
-                            else if Dat[1] <> 0D then    
-                                Reb.SetFilter("Rebate Date",'%1..',Dat[1])
-                            else if Dat[2] <> 0D then    
-                                Reb.SetFilter("Rebate Date",'..%1',Dat[2]);
-                            Reb.Setrange("Rebate Paid",False);
-                            SupReb.Reset;
-                            SupReb.Setrange("Supplier No.",Rec."No.");
-                            Case i of 
-                                1: 
-                                Begin
-                                    Reb.Setrange("Rebate Type",reb."Rebate Type"::Volume);
-                                    SupReb.Setfilter("Volume Rebate %",'>0');
-                                end;    
-                                2: 
-                                begin
-                                    Reb.Setrange("Rebate Type",reb."Rebate Type"::Supply);
-                                    SupReb.Setfilter("Supply Chain Rebate %",'>0');
-                                end;    
-                                3: 
-                                Begin 
-                                    Reb.Setrange("Rebate Type",reb."Rebate Type"::Marketing);
-                                    SupReb.Setfilter("Marketing Rebate %",'>0');
-                                end;    
-                            end;
-                            if SupReb.findset then
-                            repeat
+                            SupReb.Reset();
+                            SupReb.Setrange("Rebate Supplier No.",Rec."No.");
+                            If SupReb.Findset then
+                            Repeat
+                                reb.reset;
+                                reb.Setrange("Supplier No.",SupReb."Supplier No.");
                                 Reb.Setrange(Brand,SupReb.Brand);
+                                Reb.Setrange("Rebate Paid",False);
+                                Case i of 
+                                    1: Reb.Setrange("Rebate Type",Reb."Rebate Type"::Volume);
+                                    2: Reb.Setrange("Rebate Type",Reb."Rebate Type"::"Data Share");
+                                    3: Reb.Setrange("Rebate Type",Reb."Rebate Type"::Marketing);
+                                end;    
+                                If (Dat[1] <> 0D) And (Dat[2] <> 0D) then
+                                    Reb.Setrange("Rebate Date",Dat[1],Dat[2])
+                                else if Dat[1] <> 0D then    
+                                    Reb.SetFilter("Rebate Date",'%1..',Dat[1])
+                                else if Dat[2] <> 0D then    
+                                    Reb.SetFilter("Rebate Date",'..%1',Dat[2]);
                                 If Reb.Findset then
                                 begin
                                     Reb.Calcsums("Rebate Value");
-                                    Lineno += 10000;
-                                    SalesLine.Init;
-                                    Salesline.Validate("Document Type",SalesHdr."Document Type");
-                                    SalesLine.validate("Document No.",SalesHdr."No.");
-                                    Salesline.validate("Line No.",LineNo);
-                                    SalesLine.insert(true);
-                                    SalesLine.validate(Type,SalesLine.Type::"G/L Account");
-                                    Case i of 
-                                        1: 
-                                        begin
-                                            SalesLine.validate("No.",GenLed."Partner Volume Rebate Acc");
-                                            If (Dat[1] <> 0D) and (Dat[2] <> 0D) then
-                                                Salesline.Description := StrSubStno('%1 - %2 %3',Dat[1],Dat[2],SupReb."Volume Rebate %") + '% ' + SupReb.Brand + ' Volume Rebate'
-                                            else If (Dat[1] <> 0D) then
-                                                Salesline.Description := StrSubStno('%1.. %2',Dat[1],SupReb."Volume Rebate %") + '% ' + SupReb.Brand + ' Volume Rebate'
-                                            else If (Dat[2] <> 0D) then
-                                                Salesline.Description := StrSubStno('..%1 %2',Dat[2],SupReb."Volume Rebate %") + '% ' + SupReb.Brand + ' Volume Rebate'
-                                            else 
-                                                Salesline.Description := StrSubStno('%1 %2',Today,SupReb."Volume Rebate %") + '% ' + SupReb.Brand + ' Volume Rebate';
-                                        end;    
-                                        2: 
-                                        begin
-                                            SalesLine.validate("No.",GenLed."Supply Chain Rebate Acc");
-                                            If (Dat[1] <> 0D) and (Dat[2] <> 0D) then
-                                                Salesline.Description := StrSubStno('%1 - %2 %3',Dat[1],Dat[2],SupReb."Supply Chain Rebate %") + '% ' + SupReb.Brand + ' Supply Rebate'
-                                            else If (Dat[1] <> 0D) then
-                                                Salesline.Description := StrSubStno('%1.. %2',Dat[1],SupReb."Supply Chain Rebate %") + '% ' + SupReb.Brand + ' Supply Rebate'
-                                            else If (Dat[2] <> 0D) then
-                                                Salesline.Description := StrSubStno('..%1 %2',Dat[2],SupReb."Supply Chain Rebate %") + '% ' + SupReb.Brand + ' Supply Rebate'
-                                            else 
-                                                Salesline.Description := StrSubStno('%1 %2',Today,SupReb."Supply Chain Rebate %") + '% ' + SupReb.Brand + ' Supply Rebate';
-                                         end;
-                                        3: 
-                                        begin
-                                            SalesLine.validate("No.",GenLed."Marketing Rebate Acc");
-                                            If (Dat[1] <> 0D) and (Dat[2] <> 0D) then
-                                                Salesline.Description := StrSubStno('%1 - %2 %3',Dat[1],Dat[2],SupReb."Marketing Rebate %") + '% ' + SupReb.Brand + ' Marketing Rebate'
-                                            else If (Dat[1] <> 0D) then
-                                                Salesline.Description := StrSubStno('%1.. %2',Dat[1],SupReb."Marketing Rebate %") + '% ' + SupReb.Brand + ' Marketing Rebate'
-                                            else If (Dat[2] <> 0D) then
-                                                Salesline.Description := StrSubStno('..%1 %2',Dat[2],SupReb."Marketing Rebate %") + '% ' + SupReb.Brand + ' Marketing Rebate'
-                                            else 
-                                                Salesline.Description := StrSubStno('%1 %2',Today,SupReb."Marketing Rebate %") + '% ' + SupReb.Brand + ' Marketing Rebate';
-                                        end;
-                                    end; 
-                                    Salesline.validate("Unit Price",reb."Rebate Value");
-                                    Salesline."Description 2" := SupReb.Brand;
-                                    SalesLine.validate(Quantity,1);
-                                    Salesline.Modify(True);
+                                    If Reb."Rebate Value" > 0 then
+                                    Begin
+                                        Lineno += 10000;
+                                        SalesLine.Init;
+                                        Salesline.Validate("Document Type",SalesHdr."Document Type");
+                                        SalesLine.validate("Document No.",SalesHdr."No.");
+                                        Salesline.validate("Line No.",LineNo);
+                                        SalesLine.insert(true);
+                                        SalesLine.validate(Type,SalesLine.Type::"G/L Account");
+                                        Case i of 
+                                            1: 
+                                            begin
+                                                SalesLine.validate("No.",GenLed."Partner Volume Rebate Acc");
+                                                If (Dat[1] <> 0D) and (Dat[2] <> 0D) then
+                                                    Salesline.Description := StrSubStno('%1 - %2 %3',Dat[1],Dat[2],SupReb."Volume Rebate %") + '% ' + SupReb.Brand + ' Volume Rebate'
+                                                else If (Dat[1] <> 0D) then
+                                                    Salesline.Description := StrSubStno('%1.. %2',Dat[1],SupReb."Volume Rebate %") + '% ' + SupReb.Brand + ' Volume Rebate'
+                                                else If (Dat[2] <> 0D) then
+                                                    Salesline.Description := StrSubStno('..%1 %2',Dat[2],SupReb."Volume Rebate %") + '% ' + SupReb.Brand + ' Volume Rebate'
+                                                else 
+                                                    Salesline.Description := StrSubStno('%1 %2',Today,SupReb."Volume Rebate %") + '% ' + SupReb.Brand + ' Volume Rebate';
+                                            end;    
+                                            2: 
+                                            begin
+                                                SalesLine.validate("No.",GenLed."Supply Chain Rebate Acc");
+                                                If (Dat[1] <> 0D) and (Dat[2] <> 0D) then
+                                                    Salesline.Description := StrSubStno('%1 - %2 %3',Dat[1],Dat[2],SupReb."Supply Chain Rebate %") + '% ' + SupReb.Brand + ' Data Share Rebate'
+                                                else If (Dat[1] <> 0D) then
+                                                    Salesline.Description := StrSubStno('%1.. %2',Dat[1],SupReb."Supply Chain Rebate %") + '% ' + SupReb.Brand + ' Data Share Rebate'
+                                                else If (Dat[2] <> 0D) then
+                                                    Salesline.Description := StrSubStno('..%1 %2',Dat[2],SupReb."Supply Chain Rebate %") + '% ' + SupReb.Brand + ' Data Share Rebate'
+                                                else 
+                                                    Salesline.Description := StrSubStno('%1 %2',Today,SupReb."Supply Chain Rebate %") + '% ' + SupReb.Brand + ' Data Share Rebate';
+                                            end;
+                                            3: 
+                                            begin
+                                                SalesLine.validate("No.",GenLed."Marketing Rebate Acc");
+                                                If (Dat[1] <> 0D) and (Dat[2] <> 0D) then
+                                                    Salesline.Description := StrSubStno('%1 - %2 %3',Dat[1],Dat[2],SupReb."Marketing Rebate %") + '% ' + SupReb.Brand + ' Marketing Rebate'
+                                                else If (Dat[1] <> 0D) then
+                                                    Salesline.Description := StrSubStno('%1.. %2',Dat[1],SupReb."Marketing Rebate %") + '% ' + SupReb.Brand + ' Marketing Rebate'
+                                                else If (Dat[2] <> 0D) then
+                                                    Salesline.Description := StrSubStno('..%1 %2',Dat[2],SupReb."Marketing Rebate %") + '% ' + SupReb.Brand + ' Marketing Rebate'
+                                                else 
+                                                    Salesline.Description := StrSubStno('%1 %2',Today,SupReb."Marketing Rebate %") + '% ' + SupReb.Brand + ' Marketing Rebate';
+                                            end;
+                                        end; 
+                                        Salesline.validate("Unit Price",reb."Rebate Value");
+                                        Salesline."Description 2" := SupReb.Brand;
+                                        SalesLine.validate(Quantity,1);
+                                        Salesline.Modify(True);
+                                    end;    
                                 end;
                             until SupReb.next = 0;
                         end;                        
@@ -522,7 +566,7 @@ page 80015 "PC Rebate Payments"
                                         end;       
                                     GenLed."Supply Chain Rebate Acc":
                                         begin;
-                                            Reb.Setrange("Rebate Type",Reb."Rebate Type"::Supply);
+                                            Reb.Setrange("Rebate Type",Reb."Rebate Type"::"Data Share");
                                             flg := True;
                                         end;      
                                     GenLed."Marketing Rebate Acc":
@@ -543,20 +587,19 @@ page 80015 "PC Rebate Payments"
                     end
                     else
                         SalesHdr.Delete(true);
-                    //Clear(Rebdate);           
-                    Calculate_ALL_Rebates(Dat);
+                    Calculate_ALL_Rebates(Dat,rec."No.");
                     CurrPage.update(false);        
                 end;
             end;
         end     
         else
-            Message('No Rebates To Process and or Posting Date Is Not Defined and or Rebate Supplier is Missing!');               
+            Message('No Rebates To Process and or Posting Date Is Not Defined!');               
     end;
-    local Procedure Calculate_ALL_Rebates(Dat:Array[2] of Date);
+    local Procedure Calculate_ALL_Rebates(Dat:Array[2] of Date;Vend:Code[20]);
     var
         Ven:record Vendor;
         Reb:record "PC Purchase Rebates";
-        SupReb:record "PC Supplier Brand Rebates";
+        SupReb:Array[2] of record "PC Supplier Brand Rebates";
         flg:Boolean;
         Rebates:Array[3] of Decimal;
         GenLed:record "General Ledger Setup";
@@ -565,6 +608,7 @@ page 80015 "PC Rebate Payments"
         Clear(flg);
         Genled.Get;
         rec.Reset;
+        If Vend <> '' then rec.Setrange("No.",Vend);
         If rec.Findset then rec.DeleteAll(false);
         If GenLed."Rebate Accural Acc" = '' then
         begin
@@ -588,20 +632,23 @@ page 80015 "PC Rebate Payments"
         end;
         if Not flg then
         begin    
-            Win.open('Calculating Rebates For Vendor/Customer #1############');    
+            Win.open('Calculating Rebates For Vendor #1############');    
             Ven.Reset;
-            Ven.Setfilter("No.",'SUP-*');
+            If Vend <> ''then
+                Ven.SetRange("No.",Vend)
+            else    
+                Ven.Setfilter("No.",'SUP-*');
             Ven.Setfilter(Name,'<>%1','');
             If Ven.findset then
             repeat
-                SupReb.Reset();
-                SupReb.Setrange("Supplier No.",Ven."No.");
-                If SupReb.findset then
+                SupReb[1].Reset();
+                SupReb[1].Setrange("Rebate Supplier No.",Ven."No.");
+                If SupReb[1].findset then
                 begin
                     Win.update(1,Ven."No.");
                     rec."No." := Ven."No.";
                     rec.Name := Ven.Name;
-                    rec."Purchaser Code" := SupReb."Rebate Supplier No.";
+                    rec."Purchaser Code" := SupReb[1]."Supplier No.";
                     Clear(rec."Auto Order Rebate %");
                     Clear(rec."Marketing Rebate %");
                     Clear(rec."Supply Chain Rebate %");
@@ -610,41 +657,50 @@ page 80015 "PC Rebate Payments"
                     Clear(rec."Prices Including VAT");
                     clear(rec."Block Payment Tolerance");
                     rec."Name 2" := '*';
-                    reb.reset;
-                    reb.Setrange("Supplier No.",Ven."No.");
-                    Reb.Setrange("Rebate Paid",False);
-                    Reb.Setrange("Rebate Type",reb."Rebate Type"::Volume);
-                    If (Dat[1] <> 0D) And (Dat[2] <> 0D) then
-                        Reb.Setrange("Rebate Date",Dat[1],Dat[2])
-                    else if Dat[1] <> 0D then    
-                        Reb.SetFilter("Rebate Date",'%1..',Dat[1])
-                    else if Dat[2] <> 0D then    
-                        Reb.SetFilter("Rebate Date",'..%1',Dat[2]);
-                    If Reb.Findset then
-                    begin
-                        Reb.Calcsums("Rebate Value");
-                        rec."Auto Order Rebate %" := Reb."Rebate Value";
-                        rec."Budgeted Amount" += rec."Auto Order Rebate %";
-                    end;
-                    Reb.Setrange("Rebate Type",reb."Rebate Type"::Marketing);
-                    If Reb.Findset then
-                    begin
-                        Reb.Calcsums("Rebate Value");
-                        rec."Marketing Rebate %" := Reb."Rebate Value";
-                        rec."Budgeted Amount" += rec."Marketing Rebate %";
-                    end;
-                    Reb.Setrange("Rebate Type",reb."Rebate Type"::Supply);
-                    If Reb.Findset then
-                    begin
-                        Reb.Calcsums("Rebate Value");
-                        rec."Supply Chain Rebate %" := Reb."Rebate Value";
-                        rec."Budgeted Amount" += rec."Supply Chain Rebate %";
-                    end;
+                    SupReb[2].Reset();
+                    SupReb[2].Setrange("Rebate Supplier No.",Ven."No.");
+                    //SupReb[2].Setrange("Supplier No.",rec."Purchaser Code");
+                    If SupReb[2].Findset then
+                    Repeat
+                        reb.reset;
+                        reb.Setrange("Supplier No.",SupReb[2]."Supplier No.");
+                        Reb.Setrange(Brand,SupReb[2].Brand);
+                        Reb.Setrange("Rebate Paid",False);
+                        Reb.Setrange("Rebate Type",reb."Rebate Type"::Volume);
+                        If (Dat[1] <> 0D) And (Dat[2] <> 0D) then
+                            Reb.Setrange("Rebate Date",Dat[1],Dat[2])
+                        else if Dat[1] <> 0D then    
+                            Reb.SetFilter("Rebate Date",'%1..',Dat[1])
+                        else if Dat[2] <> 0D then    
+                            Reb.SetFilter("Rebate Date",'..%1',Dat[2]);
+                        If Reb.Findset then
+                        begin
+                            Reb.Calcsums("Rebate Value");
+                            rec."Auto Order Rebate %" += Reb."Rebate Value";
+                            rec."Budgeted Amount" += Reb."Rebate Value";
+                        end;
+                        Reb.Setrange("Rebate Type",reb."Rebate Type"::Marketing);
+                        If Reb.Findset then
+                        begin
+                            Reb.Calcsums("Rebate Value");
+                            rec."Marketing Rebate %" += Reb."Rebate Value";
+                            rec."Budgeted Amount" += Reb."Rebate Value";
+                        end;
+                        Reb.Setrange("Rebate Type",reb."Rebate Type"::"Data Share");
+                        If Reb.Findset then
+                        begin
+                            Reb.Calcsums("Rebate Value");
+                            rec."Supply Chain Rebate %" += Reb."Rebate Value";
+                            rec."Budgeted Amount" += Reb."Rebate Value";
+                        end;
+                    until SupReb[2].Next = 0;    
                     if Rec."Budgeted Amount" > 0  then Rec."Name 2" := 'PROCESS';
                     rec.insert;
                 end;    
             until Ven.next = 0;
+            Rec.Reset;
             win.Close();
+            Refress_data_msg(False);
             CurrPage.Update(false);
         end;        
     end;
@@ -657,10 +713,18 @@ page 80015 "PC Rebate Payments"
         PurchHdr.Setrange("Order type",PurchHdr."Order Type"::Fulfilo);
         If PurchHdr.findset then PurchHdr.Modifyall("Rebate Post Lock",LckFlg,false);    
     end;
+    local procedure Refress_data_msg(OnOff:boolean)
+    begin
+        Clear(RefMsg);
+        If OnOff then RefMsg := 'Data Calculations Required .. Press To Refresh Data';
+         CurrPage.update(false);
+    end;
 
     var 
         Flg:Boolean;
         Styler:text;
         RebDate:Array[2] of date;
         PstDate:date;
+        RefMsg:text;
+
 }

@@ -10,6 +10,9 @@ page  80008 "PC Shopify Parent List"
     ModifyAllowed = false;
     Caption = 'Shopify Parent Management';
       
+    PromotedActionCategoriesML = ENU = 'Pet Culture',
+                                 ENA = 'Pet Culture';
+
     layout
     {
         area(Content)
@@ -210,7 +213,7 @@ page  80008 "PC Shopify Parent List"
                         If Temp.Findset then
                         repeat
                             Win.update(1,Temp."No.");
-                            Cu.Delete_Items(Temp."No.");  
+                            Cu.Delete_Items(Temp."No.",False);  
                         until Temp.Next = 0
                         else
                             Message('Nothing Found Marked for Removal');
@@ -250,7 +253,7 @@ page  80008 "PC Shopify Parent List"
                         If Temp.Findset then
                         repeat
                             Win.update(1,Temp."No.");
-                            Cu.Delete_Items(Temp."No.");  
+                            Cu.Delete_Items(Temp."No.",false);  
                             rel.Reset();
                             Rel.Setrange("Parent Item No.",temp."no.");
                             if Rel.findset Then Rel.DeleteAll();    

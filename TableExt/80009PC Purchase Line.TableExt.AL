@@ -10,6 +10,7 @@ tableextension 80009 "PC Purchase Line Ext" extends "Purchase Line"
                 Cu:Codeunit "PC Import Export Routines";
                 Item:Record Item;
                 ItemUnit:record "Item Unit of Measure";
+                SupReb:record "PC Supplier Brand Rebates";
             begin
                 Cuf.Purch_Rebates(rec);
                 If Rec.Type = Rec.Type::Item then
@@ -58,7 +59,7 @@ tableextension 80009 "PC Purchase Line Ext" extends "Purchase Line"
                 end;
             end;                
         }
-        field(80000; "Line Rebate %"; Decimal)
+       field(80000; "Line Rebate %"; Decimal)
         {
             editable = false;
         }
@@ -79,6 +80,14 @@ tableextension 80009 "PC Purchase Line Ext" extends "Purchase Line"
             DecimalPlaces = 0 : 5;
         }
         field(80004; "Original Order UOM"; Code[10])
+        {
+            editable = false;
+        }
+       field(80005;"Brand"; Code[30])
+        {
+            editable = false;
+        }
+        field(80006;"Rebate Supplier No."; Code[20])
         {
             editable = false;
         }

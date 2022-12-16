@@ -23,5 +23,13 @@ tableextension 80010 "PC Purchase Invoice Line Ext" extends "Purch. Inv. Line"
         {
             editable = false;
         }        
+        field(80005;"Brand"; Code[30])
+        {
+            editable = false;
+        }
+        field(80006;"Rebate Supplier No."; Code[20])
+        {
+            editable = false;
+        }
     }
 }

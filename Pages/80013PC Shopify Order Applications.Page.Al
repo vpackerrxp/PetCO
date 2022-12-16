@@ -6,6 +6,9 @@ page 80013 "PC Shopify Order Applications"
     SourceTable = "PC Shopfiy Order Applications";
     Caption = 'Shopify Order Applications';
  
+    PromotedActionCategoriesML = ENU = 'Pet Culture',
+                                 ENA = 'Pet Culture';
+
     layout
     {
         area(Content)

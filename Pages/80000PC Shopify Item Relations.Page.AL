@@ -5,6 +5,9 @@ page 80000 "PC Shopify Item Relations"
     UsageCategory = Lists;
     SourceTable = "PC Shopify Item Relations";
     Caption = 'Shopify Parent/Child';
+    PromotedActionCategoriesML = ENU = 'Pet Culture',
+                                 ENA = 'Pet Culture';
+
     layout
     {
         area(Content)

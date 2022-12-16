@@ -1,4 +1,4 @@
-codeunit 80004 Watchdog
+codeunit 80004 "PC Watchdog"
 {
     trigger OnRun()
     begin
@@ -22,8 +22,8 @@ codeunit 80004 Watchdog
             Jqlog.Setrange("Object ID to Run",Jobq."Object ID to Run");
             If Jqlog.Findlast() then
             begin
-                CU.Send_Email_Msg('PC Shopify Job Queue Error',jQlog."Error Message",false,'vpacker@practiva.com.au');
-                CU.Send_Email_Msg('PC Shopify Job Queue Error',jQlog."Error Message",false,'operations@petculture.com.au');
+                CU.Send_Email_Msg('PC Shopify Job Queue Error',jQlog."Error Message",'vpacker@practiva.com.au');
+                CU.Send_Email_Msg('PC Shopify Job Queue Error',jQlog."Error Message",'operations@petculture.com.au');
                 Jobq.Restart();
             end;
         end;
@@ -35,8 +35,8 @@ codeunit 80004 Watchdog
             Jqlog.Setrange("Object ID to Run",Jobq."Object ID to Run");
             If Jqlog.Findlast() then
             begin
-                CU.Send_Email_Msg('PC EDI Job Queue Error',jQlog."Error Message",false,'vpacker@practiva.com.au');
-                CU.Send_Email_Msg('PC EDI Job Queue Error',jQlog."Error Message",false,'operations@petculture.com.au');
+                CU.Send_Email_Msg('PC EDI Job Queue Error',jQlog."Error Message",'vpacker@practiva.com.au');
+                CU.Send_Email_Msg('PC EDI Job Queue Error',jQlog."Error Message",'operations@petculture.com.au');
                 Jobq.Restart();
             end;
         end;

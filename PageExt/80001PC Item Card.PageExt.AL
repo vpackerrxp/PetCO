@@ -100,6 +100,10 @@ pageextension 80001 "PC Item Card Ext" extends "Item Card"
                     ApplicationArea = All;
                     Caption = 'Shopify Selling Option';
                 }
+                field("Shopify Product Handle";rec."Shopify Product Handle")
+                {
+                    ApplicationArea = All;
+                }
                 field("Category Name"; rec."Catergory Name")
                 {
                     ApplicationArea = All;
@@ -142,7 +146,7 @@ pageextension 80001 "PC Item Card Ext" extends "Item Card"
                             Cu:Codeunit "PC Shopify Routines";
                         begin
                             if Confirm('Are You Absolutely Sure You Wish Remove Product From Shopify Now?',False) then
-                                If Cu.Delete_Items(rec."No.") then
+                                If Cu.Delete_Items(rec."No.",False) then
                                 begin
                                     rec.Get(rec."No.");
                                     Clear(rec."Shopify Item");
@@ -213,7 +217,7 @@ pageextension 80001 "PC Item Card Ext" extends "Item Card"
                                 begin
                                     Rec."Shopify Update Flag" := True;
                                     Rec.Modify(false);    
-                                    Cu.Process_Shopify_Items(Rec."No.");
+                                    Cu.Process_Items(Rec."No.",False);
                                 end;    
                             end        
                             else
@@ -221,7 +225,7 @@ pageextension 80001 "PC Item Card Ext" extends "Item Card"
                                 // now check that this is a standalone ie Not a Child any more
                                 Rel.Setrange("Parent Item No.");
                                 Rel.Setrange("Child Item No.",rec."No.");
-                                If Not Rel.findset then Cu.Process_Shopify_Items(Rec."No.")    
+                                If Not Rel.findset then Cu.Process_Items(Rec."No.",False)    
                             end;        
                             Currpage.Update(False);
                         end;
@@ -322,7 +326,7 @@ pageextension 80001 "PC Item Card Ext" extends "Item Card"
                         If Flg then
                         begin 
                             If Confirm('Synchronise Item with Shopify Now?',True) then
-                                cu.Process_Shopify_Items(rec."No.");
+                                cu.Process_Items(rec."No.",false);
                         end         
                         else
                             Message('Only valid for shopify parents/stand alone items');
@@ -358,8 +362,8 @@ pageextension 80001 "PC Item Card Ext" extends "Item Card"
                         If Rec."Shopify Product ID" > 0 then
                             Case Strmenu('Publish Item,UnPublish Item') of
                                 0:Exit;
-                                1:Cu.Publish_UnPblish_Shopify_Items(Rec."No.",True);
-                                2:Cu.Publish_UnPblish_Shopify_Items(Rec."No.",False);
+                                1:Cu.Publish_UnPublish_Shopify_Items(Rec."No.",True);
+                                2:Cu.Publish_UnPublish_Shopify_Items(Rec."No.",False);
                             end;    
                     end;
                 }

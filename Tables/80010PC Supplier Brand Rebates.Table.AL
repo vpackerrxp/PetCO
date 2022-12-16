@@ -48,13 +48,11 @@ table 80010 "PC Supplier Brand Rebates"
         {
             editable = false;
         }
-
         field(90;"Rebate Status"; Option)
         {
             OptionMembers = Open,Closed;
             editable = false;
         }
-
     }
     keys
     {

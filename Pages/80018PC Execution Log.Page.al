@@ -10,6 +10,9 @@ page 80018 "PC Execution Log"
     ModifyAllowed = false;
     DeleteAllowed = false;
     
+    PromotedActionCategoriesML = ENU = 'Pet Culture',
+                                 ENA = 'Pet Culture';
+
     layout
     {
         area(Content)

@@ -5,6 +5,9 @@ page 80030 "PC Order Reconciliation"
     SourceTable = "PC Order Reconciliations";
     InsertAllowed = false;
     DeleteAllowed = true;
+    PromotedActionCategoriesML = ENU = 'Pet Culture',
+                                 ENA = 'Pet Culture';
+
     layout
     {
         area(content)
@@ -188,11 +191,44 @@ page 80030 "PC Order Reconciliation"
                 field("Shopify Order ID"; Rec."Shopify Order ID")
                 {
                     ApplicationArea = All;
+                    Visible = False;
+                }
+                field("Shopify Display ID"; Rec."Shopify Display ID")
+                {
+                    ApplicationArea = All;
+                    Caption = 'Shopify Order ID';
                 }
                 field("Shopify Order Type"; Rec."Shopify Order Type")
                 {
                     ApplicationArea = All;
                     Style = Strong;
+                    trigger OnDrillDown()
+                    var
+                        Cu:Codeunit "PC Shopify Routines"; 
+                        Ordhdr:record "PC Shopify Order Header";
+
+                    begin
+                        If (Rec."Shopify Order Type" = Rec."Shopify Order Type"::Refund) And 
+                            (Get_BC_Document() = '') AND (Rec."Extra Refund Count" = 0) then
+                            If Confirm('Check and Process Refund Document Now?',True) then
+                            begin
+                                Ordhdr.Reset;
+                                Ordhdr.Setrange("Order Status",Ordhdr."Order Status"::Closed);
+                                Ordhdr.Setrange("Order Type",Ordhdr."Order Type"::Invoice);
+                                Ordhdr.Setrange("Shopify Order ID",Rec."Shopify Order ID");
+                                If Ordhdr.findset then
+                                begin
+                                    Clear(Ordhdr."Refunds Checked");
+                                    Ordhdr.Modify(false);     
+                                    Cu.Process_Refunds(Rec."Shopify Order No");
+                                    Ordhdr.Setrange("Order Status",Ordhdr."Order Status"::Open);
+                                    Ordhdr.Setrange("Order Type",Ordhdr."Order Type"::CreditMemo);
+                                    If Ordhdr.findset then
+                                        Cu.Process_Orders(false,Ordhdr.ID);
+                                    CurrPage.update(false);
+                                end;
+                            end;   
+                    end;
                 }
                 field("Shopify Order No"; Rec."Shopify Order No")
                 {
@@ -258,8 +294,7 @@ page 80030 "PC Order Reconciliation"
                                 end
                                 else
                                     Message('Entries Not Found');
-                            
-                            end;
+                           end;
                         end;
                     end;            
                 }
@@ -378,40 +413,20 @@ page 80030 "PC Order Reconciliation"
                     trigger OnAction()
                     var
                         Cu: Codeunit "PC Shopify Routines";
-                        Recon:Record "PC Order Reconciliations";
-                        OrdHdr:array[2] of Record "PC Shopify Order Header";
                         Cnt:Integer;
                     begin
                         If Confirm('Update Unprocessed Refunds Now?',True) then
-                        begin
-                            Clear(Cnt);
-                            Recon.reset;
-                            Recon.Setrange("Shopify Order Type",Recon."Shopify Order Type"::Refund);
-                            Recon.SetRange("Apply Status",Recon."Apply Status"::UnApplied);
-                            Recon.Setfilter("Shopify Order Date",'<=%1',CalcDate('-2W',Today));
-                            if Recon.findset then 
-                            repeat
-                                OrdHdr[1].reset;
-                                OrdHdr[1].Setrange("Shopify Order No.",ReCon."Shopify Order No");
-                                OrdHdr[1].Setrange("Order Type",OrdHdr[1]."Order Type"::CreditMemo);
-                                If Not OrdHdr[1].findset then
-                                begin
-                                    OrdHdr[2].reset;
-                                    OrdHdr[2].Setrange("Shopify Order No.",ReCon."Shopify Order No");
-                                    OrdHdr[2].Setrange("Order Type",OrdHdr[2]."Order Type"::Invoice);
-                                    If OrdHdr[2].findset then
-                                    begin
-                                        Clear(OrdHdr[2]."Refunds Checked");
-                                        OrdHdr[2].Modify(false);
-                                        Cnt+=1;
-                                        CU.Process_Refunds(OrdHdr[2]."Shopify Order No.");
-                                    end;    
-                                end;    
-                            until Recon.next = 0;
-                            If Cnt > 0 then Message('%1 Refunds have been updated',Cnt)
+                        Begin
+                            Cnt := CU.Process_Current_Refunds(True);
+                            If Cnt > 0 then
+                            begin
+                                Cu.Process_Orders(false,0);
+                                Message('%1 Refunds have been updated and processed',Cnt)
+                            end; 
                         end;
-                    end;
-                }
+                        CurrPage.update(false);
+                   end;
+                 }
             }
             Group(Entries) 
             {   
@@ -546,7 +561,10 @@ page 80030 "PC Order Reconciliation"
         OrdHdr:record "PC Shopify Order Header";
     begin
         OrdHdr.Reset();
-        OrdHdr.Setrange("Shopify Order ID",rec."Shopify Order ID");
+        If Rec."Refund Shopify ID" <> 0 then
+            OrdHdr.Setrange("Shopify Order ID",rec."Refund Shopify ID")
+        else
+            OrdHdr.Setrange("Shopify Order ID",rec."Shopify Order ID");
         OrdHdr.Setrange("Order Type",Rec."Shopify Order Type");
         If OrdHdr.FindSet() then
             Exit(OrdHdr."BC Reference No.");
@@ -709,7 +727,7 @@ page 80030 "PC Order Reconciliation"
             Rec.Setrange("Apply Status",ApplyStat - 1); 
         CurrPage.update(False);       
     End;
-    
+   
     var
         Payments:Option All,"Shopify Pay",Paypal,AfterPay,Zip,MarketPlace,Misc;
         OrdDateFilter:Array[2] of Date;

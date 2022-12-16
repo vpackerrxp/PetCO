@@ -29,7 +29,7 @@ table 80034 "PC Campaign Rebates"
         field(70; "Campaign SKUs";Integer)
         {
             FieldClass = FlowField;
-            CalcFormula = Count("PC Campaign SKU" Where(Campaign=field(Campaign)));
+            CalcFormula = Count("PC Campaign SKU New" Where("Rebate Supplier No."=Field("Rebate Supplier No."),Campaign=field(Campaign)));
         }
     }
     keys
@@ -38,26 +38,19 @@ table 80034 "PC Campaign Rebates"
         {
             Clustered = true;
         }
+
+       key(PK2; Campaign)
+        {
+        }
     }
     trigger OnDelete()
     var
-        CSku:record "PC Campaign SKU";
-        PCPrice:Record "PC Shopfiy Pricing";
+        CSku:record "PC Campaign SKU New";
     begin
         CSku.Reset;
+        Csku.Setrange("Rebate Supplier No.","Rebate Supplier No.");
         CSku.Setrange(Campaign,Rec.Campaign);
         If Csku.Findset then
-        repeat
-            If Rec."Rebate Type" = Rec."Rebate Type"::Campaign then
-            begin
-                PCPrice.Reset;
-                PCPrice.Setrange("Item No.",CSku.Sku);
-                PCPrice.Setrange("Starting Date",Rec."Campaign Start Date");
-                PCPrice.Setrange("Ending Date",rec."Campaign End Date");
-                If PCPrice.Findset then
-                    PCPrice.Delete;
-            end;
-            CSku.delete;
-        until Csku.next = 0;    
+            CSku.deleteall(true);
     end;
 }

@@ -483,7 +483,6 @@ codeunit 80003 "PC EDI Routines"
                 jobque.SetStatus(jobque.Status::"On Hold");
         end;    
     end;
-
     procedure Process_EDI_Transaction_Documents()
     var
         Parms:Dictionary of [text,text];
@@ -662,7 +661,7 @@ codeunit 80003 "PC EDI Routines"
         Exlog."EDI Execution Action" := EDIBuff."Response Type";
         Exlog.modify;
     end; 
-    local procedure EDI_Execution_Transaction_Log(var PO:Record "Purchase Header";RespType:Integer)
+    procedure EDI_Execution_Transaction_Log(var PO:Record "Purchase Header";RespType:Integer)
     var
         EXLog:Record "PC EDI Execution Log";
     begin
@@ -735,7 +734,7 @@ codeunit 80003 "PC EDI Routines"
             // check that the log entry exists
             if not Excp.Get(PurchHdr."No.") then
             begin
-                Cus.Send_Email_Msg('EDI Exceptions Exist For PO No ' + PurchHdr."No.",'',False,'');        
+                Cus.Send_Email_Msg('EDI Exceptions Exist For PO No ' + PurchHdr."No.",'',Setup."EDI Exception Email Address");        
                 Excp.init; 
                 Excp."Purchase Order No." := PurchHdr."No.";
                 Excp."Exception Date" := Today;
@@ -813,6 +812,14 @@ codeunit 80003 "PC EDI Routines"
                     FirstResp := PurchHdr."EDI Transaction Status" = PurchHdr."EDI Transaction Status"::ORIGINAL;
                     PurchHdr."EDI Response Received" := True;
                     PurchHdr.Modify(false);
+                    //Here we ignore orders that Have already been dispatched 
+                    If PurchHdr."EDI Dispatch Received" then
+                    begin
+                        Cus.Send_Email_Msg('PO No ' + PurchHdr."No." + ' has received EDI Response Action after EDI Dispatch Action received .. Response ignored','',Setup."EDI Exception Email Address");        
+                        EDIHdrBuff.Processed := True;
+                        EDIHdrBuff.Modify(false);
+                        exit;
+                    end;
                     Clear(respChg);
                     CuXML.FindNode(CurrNode[1],XMLPath + 'Header/MessageFunctionCode',CurrNode[2]);
                     If CurrNode[2].AsXmlElement().InnerText = 'REJECTED' then
@@ -851,7 +858,7 @@ codeunit 80003 "PC EDI Routines"
                     else
                     begin
                         Init_Excpt_Msg(ExcpMsg,PurchHdr);
-                        ExcpMsg."Exception Message" := 'EDI Response -> Unable to evaluate EDIRequested Delivery Date';
+                        ExcpMsg."Exception Message" := 'EDI Response -> Unable to evaluate EDI Requested Delivery Date';
                         ExcpMsg.modify;
                     end;    
                     CuXML.FindNode(CurrNode[1],XMLPath + 'Header',CurrNode[2]);
@@ -1147,6 +1154,13 @@ codeunit 80003 "PC EDI Routines"
                     Clear(DspChg);
                     PurchHdr."EDI Dispatch Received" := True;
                     PurchHdr.modify(false);
+                    If Not PurchHdr."EDI Response Received" then
+                    begin
+                        Cus.Send_Email_Msg('PO No ' + PurchHdr."No." + ' has received an EDI Dispatch action with no EDI Response Action received .. Dispatch ignored','',Setup."EDI Exception Email Address");        
+                        EDIHdrBuff.Processed := True;
+                        EDIHdrBuff.Modify(false);
+                        exit;
+                    end;
                     CuXML.FindNode(CurrNode[1],XMLPath + 'Header/EstimatedDeliveryDate',CurrNode[2]);
                     If Evaluate(tstDate,Currnode[2].AsXmlElement().InnerText) then
                     begin
@@ -1175,7 +1189,7 @@ codeunit 80003 "PC EDI Routines"
                     else
                     begin
                         Init_Excpt_Msg(ExcpMsg,PurchHdr);
-                        ExcpMsg."Exception Message" := 'EDI Despatch -> Unable to evaluate EDIRequested Delivery Date';
+                        ExcpMsg."Exception Message" := 'EDI Dispatch -> Unable to evaluate EDIRequested Delivery Date';
                         ExcpMsg.modify;
                     end;
                     /*    
@@ -1210,7 +1224,7 @@ codeunit 80003 "PC EDI Routines"
                             If PurchHdr."Buy-from Vendor No." <>  CurrNode[2].AsXmlElement().InnerText then
                             begin
                                 Init_Excpt_Msg(ExcpMsg,PurchHdr);
-                                ExcpMsg."Exception Message" := strsubStno('EDI Despatch -> Supplier %1 does not Match PO Supplier %2'
+                                ExcpMsg."Exception Message" := strsubStno('EDI Dispatch -> Supplier %1 does not Match PO Supplier %2'
                                                             , CurrNode[2].AsXmlElement().InnerText,PurchHdr."Buy-from Vendor No.");
                                 ExcpMsg.modify;
                             end;
@@ -1221,7 +1235,7 @@ codeunit 80003 "PC EDI Routines"
                             If 'DC' + PurchHdr."Location Code" <>  CurrNode[2].AsXmlElement().InnerText then
                             begin
                                 Init_Excpt_Msg(ExcpMsg,PurchHdr);
-                                ExcpMsg."Exception Message" := strsubStno('EDI Despatch -> Shipto Location %1 does not Match PO Shipto Location %2'
+                                ExcpMsg."Exception Message" := strsubStno('EDI Dispatch -> Shipto Location %1 does not Match PO Shipto Location %2'
                                                             , CurrNode[2].AsXmlElement().InnerText,'DC' + PurchHdr."Location Code");
                                 ExcpMsg.modify;
                             end;
@@ -1275,7 +1289,7 @@ codeunit 80003 "PC EDI Routines"
                                 If Itemtmp2.get(PurchLine."No.") then 
                                 Begin
                                     Init_Excpt_Msg(ExcpMsg,PurchHdr);
-                                    ExcpMsg."Exception Message" := strsubStno('EDI Despatch -> Item %1 Received Multiple Times Via EDI'
+                                    ExcpMsg."Exception Message" := strsubStno('EDI Dispatch -> Item %1 Received Multiple Times Via EDI'
                                                                             ,Purchline."No.");                          
                                     ExcpMsg.modify;
                                 end
@@ -1306,7 +1320,7 @@ codeunit 80003 "PC EDI Routines"
                                         begin
                                             Qty := -1;
                                             Init_Excpt_Msg(ExcpMsg,PurchHdr);
-                                            ExcpMsg."Exception Message" := strsubStno('EDI Despatch -> ' + mesg 
+                                            ExcpMsg."Exception Message" := strsubStno('EDI Dispatch -> ' + mesg 
                                                                             + ' for Item No %1 at Order Line No %2 is beyond acceptable limits for PO Line Values',
                                                                                 Purchline."No.",LineNo);                          
                                             ExcpMsg.modify;
@@ -1329,7 +1343,7 @@ codeunit 80003 "PC EDI Routines"
                             else
                             begin
                                 Init_Excpt_Msg(ExcpMsg,PurchHdr);
-                                ExcpMsg."Exception Message" := strsubStno('EDI Despatch -> Item %1 does not match PO Item No for Order Line No %2 ',
+                                ExcpMsg."Exception Message" := strsubStno('EDI Dispatch -> Item %1 does not match PO Item No for Order Line No %2 ',
                                                                         Itemtmp."No.",LineNo);                          
                                 ExcpMsg.modify(false);
                             end;
@@ -1337,7 +1351,7 @@ codeunit 80003 "PC EDI Routines"
                         else
                         begin
                             Init_Excpt_Msg(ExcpMsg,PurchHdr);
-                            ExcpMsg."Exception Message" := StrSubstNo('EDI Despatch -> Failed to locate Order Line No %1 on PO',LineNo);
+                            ExcpMsg."Exception Message" := StrSubstNo('EDI Dispatch -> Failed to locate Order Line No %1 on PO',LineNo);
                             ExcpMsg.modify;
                         end;
                     until Itemtmp.next = 0;
@@ -1360,6 +1374,13 @@ codeunit 80003 "PC EDI Routines"
                 begin
                     PurchHdr."EDI Invoice Received" := True;
                     PurchHdr.modify(false);
+                    If Not PurchHdr."EDI Dispatch Received" then
+                    begin
+                        Cus.Send_Email_Msg('PO No ' + PurchHdr."No." + ' has received an EDI Invoice action with no EDI Dispatch Action received .. Invoice ignored','',Setup."EDI Exception Email Address");        
+                        EDIHdrBuff.Processed := True;
+                        EDIHdrBuff.Modify(false);
+                        exit;
+                    end;
                     CuXML.FindNode(CurrNode[1],XMLPath + 'Header/InvoiceNumber',CurrNode[2]);
                     PurchHdrTemp."Vendor Invoice No." := CurrNode[2].AsXmlElement().InnerText;
                     CuXML.FindNode(CurrNode[1],XMLPath + 'Header',CurrNode[2]);
@@ -1775,13 +1796,13 @@ codeunit 80003 "PC EDI Routines"
                             GLSetup."Allow Posting To" := PstDate;
                             GLSetup.Modify(false);
                         end;
-                        If PayTermMsg <> '' then Cus.Send_Email_Msg('EDI Invoice Payment Terms Advice',PayTermMsg,False,'');
+                        If PayTermMsg <> '' then Cus.Send_Email_Msg('EDI Invoice Payment Terms Advice',PayTermMsg,Setup."EDI Exception Email Address");
                     end;
                 end;
             end;
             If ExcpMsg.findset then
             begin
-                Cus.Send_Email_Msg('EDI Exceptions Exist For PO No ' + PurchHdr."No.",'',False,'');        
+                Cus.Send_Email_Msg('EDI Exceptions Exist For PO No ' + PurchHdr."No.",'',Setup."EDI Exception Email Address");        
                 if not Excp.Get(PurchHdr."No.") then
                 begin
                     Excp.init; 
@@ -1817,7 +1838,9 @@ codeunit 80003 "PC EDI Routines"
         PurchHdr:record "Purchase Header";
         item:record Item;
         CUS:Codeunit "PC Shopify Routines";
+        Setup:Record "Sales & Receivables Setup";
     begin
+        Setup.Get;
         EDIHdrBuff.Reset;
         EDIHdrBuff.Setrange(Processed,false);
         EDIHdrBuff.Setrange("Response Type",EDIHdrBuff."Response Type"::CreditNote);
@@ -1895,7 +1918,7 @@ codeunit 80003 "PC EDI Routines"
                             PurchLine.modify(true);
                         end;                                  
                 end;
-                CUS.Send_Email_Msg('Purchase Credit Note ' +  PurchHdr."No." + 'has been created via EDI','',False,'');        
+                CUS.Send_Email_Msg('Purchase Credit Note ' +  PurchHdr."No." + 'has been created via EDI','',Setup."EDI Exception Email Address");        
                 EDIHdrBuff.Processed := True;
                 EDIHdrBuff.Modify(false);
             end;    

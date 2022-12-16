@@ -8,6 +8,9 @@ page 80014 "PC Shopify Applications"
     //DeleteAllowed = false;
     Caption = 'Shopify Applications';    
   
+    PromotedActionCategoriesML = ENU = 'Pet Culture',
+                                 ENA = 'Pet Culture';
+
     layout
     {
         area(Content)

@@ -1,7 +1,7 @@
-codeunit 80005 Test
+codeunit  80006 Test
 {
-     Permissions = TableData "Sales Invoice Line" = rm,tabledata "Sales Cr.Memo Line" = rm;
-     
+     Permissions = TableData "Sales Invoice Line" = rm,tabledata "Sales Cr.Memo Line" = rm
+                 ,tabledata "Purch. Inv. Line" = rm,tabledata "Purch. Rcpt. Line" = rm;        
 var
         Paction:Option GET,POST,DELETE,PATCH,PUT;
         WsError:text;
@@ -10,7 +10,79 @@ var
     Begin
         Error('This is a test for Vic');
     End;
-
+    procedure Fix_Rebate_Suppliers()
+    var
+        suppBrand:Record "PC Supplier Brand Rebates";
+        PCReb:record "PC Purchase Rebates";
+        PILine:record "Purch. Inv. Line";
+        PRec:record "Purch. Rcpt. Line";
+        Item:record Item;
+        POLine:Record "Purchase Line";
+        PH:record "Purchase Header";
+        Flg:Boolean;
+    begin
+        PH.reset;
+        PH.setrange("Document Type",PH."Document Type"::Order);
+        PH.setrange("Order Type",PH."Order Type"::Fulfilo);
+        If PH.Findset then
+        repeat
+            Flg := PH.Status = PH.Status::Released;
+            If Flg then
+            begin
+                PH.Status := PH.Status::Open;
+                Ph.Modify(False);
+            end;    
+            POLine.reset;
+            POLine.Setrange(Type,POLine.Type::Item);
+            POLine.Setrange("Document Type",PH."Document Type");
+            POLine.Setrange("Document No.",PH."No.");
+            POLine.Setrange(Brand,'');
+            If POLine.FindSet() then
+            Repeat
+                Item.Get(POLine."No.");
+                If Not Item."Purchasing Blocked" then
+                Begin
+                    POLine.Validate("No.");
+                    POline.Modify(False);
+                end;    
+            Until POLine.next = 0;
+            If Flg then
+            begin
+                PH.Status := PH.Status::Released;
+                Ph.Modify(False);
+            end; 
+        until PH.next = 0;       
+        PILine.reset;
+        PILine.Setrange(Type,PILine.Type::Item);
+        PILine.Setrange(Brand,'');
+        If PILine.Findset then
+        repeat
+            If Item.Get(PILine."No.") then
+            begin
+                PILine.Brand := Item.BRand;
+                suppBrand.Reset;
+                suppBrand.Setrange(Brand,PIline.Brand);
+                If suppBrand.FindSet() then
+                    PILine."Rebate Supplier No." := suppBrand."Rebate Supplier No.";
+                PILine.Modify(false);    
+            end;    
+        until PILine.Next = 0;
+        PRec.reset;
+        PRec.Setrange(Type,PRec.Type::Item);
+        PRec.SetRange(Brand,'');
+        If Prec.Findset then
+        repeat
+            If Item.Get(PILine."No.") then
+            begin
+                Prec.Brand := Item.BRand;
+                suppBrand.Reset;
+                suppBrand.Setrange(Brand,Prec.Brand);
+                If suppBrand.FindSet() then
+                    Prec."Rebate Supplier No." := suppBrand."Rebate Supplier No.";
+                Prec.Modify(false);    
+            end;    
+        until PRec.Next = 0;
+    end;    
     procedure Fix_con();
     var
         Recon:array[2] of record "PC Order Reconciliations";
@@ -78,6 +150,235 @@ var
         Win.Close;
         Commit;        
     end;
+
+       procedure Fix_market_Place()
+    var
+        Recon:record "PC Order Reconciliations";
+        CU:Codeunit "PC Shopify Routines";
+        win:dialog;
+        i:Integer;
+    begin
+        win.Open('Fixing Record #1######## of #2#######');
+        Clear(i);
+        Recon.Reset;
+        Recon.Setrange("Payment Gate Way",Recon."Payment Gate Way"::MarketPlace);
+        Recon.Setrange("Reference No",'');
+        If Recon.FindSet() then
+        begin
+            win.update(2,Recon.Count);
+            repeat
+                i+=1;
+                CU.Get_Order_Reconciliation_Transactions(Recon);
+                win.update(1,i);
+                Recon.Modify(false);
+            until Recon.Next = 0;
+        end;    
+        win.close;
+    end;
+
+    Procedure Fix_Rebates()
+    var 
+        SalesInv:Record "Sales Invoice Line";
+        SalesInv2:Record  "Sales Invoice Line";
+        SalesHdr:Record "Sales Header";
+        SLine:Record "Sales Line";
+        lineNo:Integer;
+        RebateTot:array[2] of Decimal;
+        RebateSum:array[2] of Decimal;
+        RebDesc:array[2] of Code[20];
+        i:Integer;
+    begin
+        Clear(SalesHdr);
+        SalesHdr.init;
+        SalesHdr.validate("Document Type",SalesHdr."Document Type"::Invoice);
+        SalesHdr.Validate("Sell-to Customer No.",'PETCULTURE');
+        SalesHdr.validate("Prices Including VAT",True);
+        SalesHdr."Your Reference" := 'SHOPIFY ORDERS';
+        SalesHdr.Insert(true);
+        Clear(LineNo);
+        Clear(RebateTot);
+        Clear(RebDesc);
+        SalesInv.Reset;
+        SalesInv.Setrange("Sell-to Customer No.",'PETCULTURE');
+        SalesInv.Setfilter("Document No.",'INV-00002794..');
+        SalesInv.Setrange(Type,SalesInv.Type::Item);
+        If SalesInv.Findset then
+        repeat
+            Clear(SalesInv."Campaign Rebate");
+            Clear(SalesInv."Campaign Rebate Amount");
+            Clear(SalesInv."Campaign Rebate Code");
+            Clear(SalesInv."Campaign Rebate Supplier");
+            Clear(SalesInv."Auto Delivery Rebate Amount");
+            Clear(SalesInv."Auto Delivery Rebate Code");
+            Clear(SalesInv."Auto Delivery Rebate Supplier");         
+            Sline.Init;
+            SLine."Document No." := SalesHdr."No.";
+            SLine."Document Type" := SalesHdr."Document Type";
+            Sline."Shopify Order Date" := SalesInv."Shopify Order Date";
+            Sline."Shopify Order ID" := SalesInv."Shopify Order ID";
+            Sline."Shopify Order No" := SalesInv."Shopify Order No";
+            Sline."No." := SalesInv."No.";
+            Sline.Quantity := SalesInv.Quantity;
+            Sline."Auto Delivered" := SalesInv."Auto Delivered";
+            Sline."Rebate Supplier No." := SalesInv."Rebate Supplier No.";
+            Add_Rebate_Entries(Sline,LineNo,RebateTot,RebDesc);
+            SalesInv."Campaign Rebate" := Sline."Campaign Rebate";
+            SalesInv."Campaign Rebate Amount" := Sline."Campaign Rebate Amount";
+            SalesInv."Campaign Rebate Code" := Sline."Campaign Rebate Code";
+            SalesInv."Campaign Rebate Supplier" := Sline."Campaign Rebate Supplier";
+            SalesInv."Auto Delivery Rebate Amount" := Sline."Auto Delivery Rebate Amount";
+            SalesInv."Auto Delivery Rebate Code" := Sline."Auto Delivery Rebate Code";
+            SalesInv."Auto Delivery Rebate Supplier" := Sline."Auto Delivery Rebate Supplier";
+            SalesInv.modify(false);
+        Until SalesInv.next = 0;
+
+
+
+
+
+/*        For i := 1 to 2 do 
+            If Rebatetot[i] > 0 then
+            begin
+                LineNo += 10;
+                Clear(SLine);
+                SLine.init;
+                SLine.Validate("Document Type",SalesHdr."Document Type");
+                SLine.Validate("Document No.",SalesHdr."No.");
+                SLine."Line No." := LineNo;
+                Sline.insert(true);
+                SLine.Validate(Type,SLine.TYpe::Item);
+                If i = 1 then
+                    SLine.validate("No.",'REBATE_REV_CAMP')
+                else
+                    SLine.validate("No.",'REBATE_REV_AUTO');
+                SLine.Validate("VAT Prod. Posting Group",'NO GST');
+                SLine.Validate("Unit of Measure Code",'EA');    
+                SLine.Validate(Quantity,1);
+                Clear(Sline."Auto Delivered");
+                Sline.Validate("Unit Price",-Rebatetot[i]);
+                If i = 1 then
+                begin
+                    SLine.Description := 'Campaign Rebate ' + RebDesc[i];
+                    SLine."Campaign Rebate Code" := RebDesc[i];
+                end
+                else
+                begin
+                    SLine.Description := 'Auto Delivery Rebate ' + RebDesc[i];
+                    SLine."Auto Delivery Rebate Code" := RebDesc[i];
+                end;    
+                SLine.Modify(true);
+            end;
+        SalesInv.Reset;
+        SalesInv.Setrange("Document No.",'INV-00002828');
+        SalesInv.Setrange(Type,SalesInv.Type::"G/L Account");
+        If SalesInv.Findset then
+        repeat
+            SalesInv2.Reset;
+            SalesInv2.Setrange("Shopify Order ID",)
+
+        Until SalesInv.next = 0;
+*/
+
+
+
+
+
+    end;
+
+    local procedure Add_Rebate_Entries(var SLine:record "Sales Line";var Lineno:Integer;Var RebateTot:Array[2] of Decimal;var RDesc:array[2] of Code[20])
+    var
+        CmpReb:Record "PC Campaign Rebates";
+        CmpSku:record "PC Campaign SKU New";
+        SalesLine:Record "Sales Line";
+        i:Integer;
+        RunFlg:Boolean;
+        GLSetup:Record "General Ledger Setup";
+        PurchCst:record "PC Purchase Pricing";
+    begin
+        GLSetup.get;
+        For i := 1 to 2 do
+        begin
+            CmpReb.reset;
+            Clear(RunFlg);
+            Case i Of 
+                1:
+                begin
+                    CmpReb.Setrange("Rebate Type",CmpReb."Rebate Type"::Campaign);
+                    CmpReb.SetFilter("Campaign Start Date",'>%1&<=%2',0D,SLine."Shopify Order Date");
+                    CmpReb.SetFilter("Campaign End Date",'>=%1',SLine."Shopify Order Date");
+                    RunFlg := True;
+                end;
+                2:
+                begin
+                    CmpReb.Setrange("Rebate Type",CmpReb."Rebate Type"::"Auto Delivery");
+                    RunFlg := Sline."Auto Delivered";
+                end;    
+            end;
+            If RunFlg then
+                If CmpReb.findset then
+                repeat
+                    CmpSku.Reset;
+                    CmpSku.Setrange("Rebate Supplier No.",CmpReb."Rebate Supplier No.");
+                    CmpSku.Setrange(Campaign,CmpReb.Campaign);
+                    CmpSku.Setrange(SKU,SLine."No.");
+                    CmpSku.SetFilter("Rebate Amount",'>0');
+                    If CmpSku.findset then
+                    begin
+                        PurchCst.Reset;
+                        PurchCst.SetCurrentKey("End Date");
+                        PurchCst.SetAscending("End Date",false);
+                        PurchCst.Setrange("Item No.",CmpSku.SKU);
+                        PurchCst.Setrange("Supplier Code",SLine."Rebate Supplier No.");
+                        PurchCst.SetFilter("Start Date",'<=%1',SLine."Shopify Order Date");
+                        PurchCst.Setfilter("End Date",'%1|>=%2',0D,SLine."Shopify Order Date");
+                        If PurchCst.Findset then
+                        begin
+                            LineNo += 10;
+                            Clear(SalesLine);
+                            SalesLine.init;
+                            SalesLine.Validate("Document Type",SLine."Document Type");
+                            SalesLine.Validate("Document No.",SLine."Document No.");
+                            SalesLine."Line No." := LineNo;
+                            Salesline.insert(true);
+                            SalesLine.Validate(Type,SalesLine.Type::"G/L Account");
+                            // Rebate Amount entered as a percentage now
+                            If i = 1 then
+                            begin
+                                SalesLine.validate("No.",GLSetup."Campaign Rebate Posting Acc");
+                                SalesLine.Description := 'Campaign Rebate ' + CmpReb.Campaign;
+                                SLine."Campaign Rebate" := True;
+                                SLine."Campaign Rebate Supplier" := CmpReb."Rebate Supplier No.";
+                                SLine."Campaign Rebate Amount" := ((PurchCst."Unit Cost" * CmpSku."Rebate Amount")/100) * SLine.Quantity;
+                                Sline."Campaign Rebate Code"  := CmpReb.Campaign;
+                                Sline."Campaign Rebate %" := CmpSku."Rebate Amount";
+                            end    
+                            else
+                            begin
+                                SalesLine.validate("No.",Glsetup."Auto Order Rebate Posting Acc");
+                                SalesLine.Description := 'Auto Delivery Rebate ' + CmpReb.Campaign;
+                                SLine."Auto Delivery Rebate Supplier" := CmpReb."Rebate Supplier No.";
+                                Sline."Auto Delivery Rebate Amount" := ((PurchCst."Unit Cost" * CmpSku."Rebate Amount")/100) * SLine.Quantity;
+                                Sline."Auto Delivery Rebate Code" := CmpReb.Campaign;
+                                Sline."Auto Delivery Rebate %" := CmpSku."Rebate Amount";
+                            end;    
+                            SalesLine.Validate(Quantity,SLine.Quantity);
+                            Salesline.Validate("Unit Price",(PurchCst."Unit Cost" * CmpSku."Rebate Amount")/100);
+                            RebateTot[i] += ((PurchCst."Unit Cost" * CmpSku."Rebate Amount")/100) * SLine.Quantity;
+                            RDesc[i] := CmpReb.Campaign;
+                            Salesline."Shopify Order ID" := SLine."Shopify Order ID";
+                            SalesLine."Shopify Order Date" := Sline."Shopify Order Date";
+                            SalesLine."Rebate Supplier No." := CmpReb."Rebate Supplier No.";
+                            Salesline.Modify(true)
+                        end;
+                    end;    
+                Until CmpReb.next = 0;
+        end;
+    end;
+
+
+
+
+
     procedure Testrun()
     var
         Recon:Record "PC Order Reconciliations";
@@ -94,8 +395,22 @@ var
         TmpRecon:Record "PC Order Reconciliations" temporary;
         Cu:Codeunit "Gen. Jnl.-Post";
         PstDate:array[2] of date;
+        CU1:Codeunit "PC Shopify Routines";
         Dates:array[2] of Date;
+        RefID:BigInteger;
     begin
+        //Evaluate(RefId,'4626154061935');
+        //Cu1.Check_For_Extra_Refunds(0);
+        //Exit;
+        
+        Recon.Reset;
+        If Recon.Findset then
+        repeat
+            Recon."Shopify Display ID" := Recon."Shopify Order ID";
+            Recon.Modify(false);
+        until recon.next = 0;    
+        Exit;    
+
         win.Open('Retrieving Order No #1############'
                + 'Processing Order No #2###########');
         GLSetup.Get;

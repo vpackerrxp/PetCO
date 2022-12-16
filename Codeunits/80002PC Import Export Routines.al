@@ -2,7 +2,7 @@ Codeunit 80002 "PC Import Export Routines"
 {
     var
         Paction:Option GET,POST,DELETE,PATCH,PUT;
-        ShopifyBase:Label '/admin/api/2021-10/';
+        ShopifyBase:Label '/admin/api/2022-07/';
 
  // routine to Build PO's
     procedure Build_Import_PO()
@@ -138,10 +138,6 @@ Codeunit 80002 "PC Import Export Routines"
                                                     If ItemUnit.Get(Item."No.",Copystr(Flds.get(3).ToUpper(),1,10)) then
                                                     begin 
                                                         Clear(LineDisc); 
-                                                        Brnd.reset;
-                                                        Brnd.Setrange("Supplier No.",PurchHdr."Buy-from Vendor No.");
-                                                        Brnd.Setrange(Brand,Item.Brand);
-                                                        If Brnd.findset then LineDisc := Brnd."PO Line Disc %";        
                                                         If GuiAllowed then win.update(2,Item."No.");
                                                         PurchLine.init;
                                                         PurchLine.validate("Document Type",PurchHdr."Document Type");
@@ -153,6 +149,10 @@ Codeunit 80002 "PC Import Export Routines"
                                                         Purchline.Validate("No.",Item."No.");
                                                         Purchline.validate("Unit of Measure Code",Copystr(Flds.get(3).ToUpper(),1,10));
                                                         Purchline.Validate(Quantity,qty);
+                                                        Brnd.reset;
+                                                        Brnd.Setrange("Supplier No.",PurchHdr."Buy-from Vendor No.");
+                                                        Brnd.Setrange(Brand,Item.Brand);
+                                                        If Brnd.findset then LineDisc := Brnd."PO Line Disc %"; 
                                                         if Cst > 0 then Purchline.Validate("Direct Unit Cost",Cst);
                                                         If Disc > 0 then
                                                             Purchline.Validate("Line discount %",Disc + LineDisc)
@@ -475,7 +475,7 @@ Codeunit 80002 "PC Import Export Routines"
                                                 Sp."Item No." := Item."No.";
                                                 Sp."Sell Price" := Price;
                                                 Sp."New RRP Price" := RRP;
-                                                Sp."Starting Date" := Today;       
+                                                Evaluate(Sp."Starting Date",'01/01/2000');       
                                                 Sp.Insert();
                                             end;
                                         end;
@@ -883,8 +883,11 @@ Codeunit 80002 "PC Import Export Routines"
                     else
                         OutStrm.WriteText('CHILD,');
                     OutStrm.WriteText(Item."Inventory Posting Group" + ',');
+                    Item.Get_Price(RRP);
+                    If (RRP > 0) AND (RRP <> Item."Unit Price") then
+                        Item."Unit Price" := RRP;
                     OutStrm.WriteText(Format(Item."Unit Price",0,'<Precision,2><Standard Format,1>') + ',');
-                    OutStrm.WriteText(Format(Item.Get_Price,0,'<Precision,2><Standard Format,1>') + ',');
+                    OutStrm.WriteText(Format(Item.Get_Price(RRP),0,'<Precision,2><Standard Format,1>') + ',');
                     OutStrm.WriteText(Item."Vendor No." + ',');
                     OutStrm.WriteText('PRIMARY,');
                     OutStrm.WriteText(Item."Vendor Item No." + ',');
@@ -952,8 +955,11 @@ Codeunit 80002 "PC Import Export Routines"
                         else
                             OutStrm.WriteText('CHILD,');
                         OutStrm.WriteText(Item."Inventory Posting Group" + ',');
+                        Item.Get_Price(RRP);
+                        If (RRP > 0) AND (RRP <> Item."Unit Price") then
+                            Item."Unit Price" := RRP;
                         OutStrm.WriteText(Format(Item."Unit Price",0,'<Precision,2><Standard Format,1>') + ',');
-                        OutStrm.WriteText(Format(Item.Get_Price,0,'<Precision,2><Standard Format,1>') + ',');
+                        OutStrm.WriteText(Format(Item.Get_Price(RRP),0,'<Precision,2><Standard Format,1>') + ',');
                         OutStrm.WriteText(ItemVen."Vendor No." + ',');
                         OutStrm.WriteText('ALTERNATE,');
                         OutStrm.WriteText(ItemVen."Vendor Item No." + ',');
@@ -2188,13 +2194,13 @@ Codeunit 80002 "PC Import Export Routines"
         OutStrm.WriteText('Rebate Supplier No.,Campaign Code,Campaign Type,Campaign Start Date,Campaign End Date' + CRLF);
         OutStrm.WriteText(',,' + Format(TempType) + ',,' + CRLF);
         OutStrm.WriteText(',,,,,' + CRLF);
-        OutStrm.WriteText('Campaign SKUs,Campaign Code,Campaign Price,Rebate %' + CRLF);
+        OutStrm.WriteText('Campaign SKUs,Rebate Supplier No.,Campaign Price,Rebate %' + CRLF);
         FileName := 'Campaign_Export.csv'; 
         BlobTmp.CreateInStream(InStrm);
         DownloadFromStream(Instrm,'Campaign Template Export','','',FileName);
         Message('File '+ Filename + ' has been downloaded to your windows download folder');
     end;
-    procedure Export_Campaign_Data(Camp:Code[20])
+    procedure Export_Campaign_Data(Supp:Code[20];Camp:Code[20])
     var
         BlobTmp:COdeunit "Temp Blob";
         OutStrm:OutStream;
@@ -2202,13 +2208,14 @@ Codeunit 80002 "PC Import Export Routines"
         CRLF:text[2];
         Filename:text;
         CmpReb:Record "PC Campaign Rebates";
-        CmpSku:Record "PC Campaign SKU";
+        CmpSku:Record "PC Campaign SKU New";
     Begin
         CRLF[1] := 13;
         CRLF[2] := 10;
         BlobTmp.CreateOutStream(OutStrm);
         OutStrm.WriteText('Rebate Supplier No,Campaign Code,Campaign Type,Campaign Start Date,Campaign End Date' + CRLF);
         CmpReb.Reset;
+        CmpReb.Setrange("Rebate Supplier No.",Supp);
         CmpReb.SetRange(Campaign,Camp);
         CmpReb.findset;
         OutStrm.WriteText(CmpReb."Rebate Supplier No." + ',');
@@ -2221,13 +2228,14 @@ Codeunit 80002 "PC Import Export Routines"
         end
         else
             OutStrm.WriteText(',' + CRLF);
-        OutStrm.WriteText('Campaign SKUs,Campaign Code,Campaign Price,Rebate %' + CRLF);
+        OutStrm.WriteText('Campaign SKUs,Rebate Supplier No.,Campaign Price,Rebate %' + CRLF);
         CmpSku.Reset;
+        CmpSku.Setrange("Rebate Supplier No.",Supp);
         CmpSku.Setrange(Campaign,CmpReb.Campaign);
         If CmpSku.Findset then 
         repeat
             OutStrm.WriteText(CmpSku.SKU + ',');
-            OutStrm.WriteText(CmpSku.Campaign + ',');
+            OutStrm.WriteText(CmpSku."Rebate Supplier No." + ',');
             If CmpReb."Rebate Type" = CmpReb."Rebate Type"::Campaign then
             Begin
                 OutStrm.WriteText(Format(CmpSku."Campaign Price",0,'<Precision,2><Standard Format,1>') + ',');
@@ -2243,7 +2251,7 @@ Codeunit 80002 "PC Import Export Routines"
     end;
     procedure Import_Campaign_Rebates()
     var
-        ImpData:record "PC Campaign SKU" temporary;
+        ImpData:record "PC Campaign SKU New" temporary;
         Dates:array[2] of Date;
         Vars:Array[3] of code[20];
         CList:List of [Text];
@@ -2251,7 +2259,7 @@ Codeunit 80002 "PC Import Export Routines"
         Vend:record Vendor;
         Item:Record Item;    
         CmpReb:record "PC Campaign Rebates";
-        CmpSku:record "PC Campaign SKU"; 
+        CmpSku:record "PC Campaign SKU New"; 
         Flds:list of [text];
         FData:Text;
         Instrm:InStream;
@@ -2296,11 +2304,10 @@ Codeunit 80002 "PC Import Export Routines"
                 If Not Vend.Get(Vars[1]) then Error('Rebate Vendor Does Not Exist');    
                 Vars[2] := Flds.Get(2).ToUpper();
                 If Vars[2] = '' then error('Campaign Not Defined');
-                CmpReb.reset;
-                CmpReb.Setrange(Campaign,Vars[2]);
-                If CmpReb.findset then Error(StrSubStno('Campaign Code %1 Already exists',Vars[2]));
                 Vars[3] := Flds.Get(3).ToUpper();
                 If Vars[3] = '' then error('Campaign Type Not Defined');
+                CmpReb.reset;
+                CmpReb.Setrange("Rebate Type",CmpReb."Rebate Type"::"Auto Delivery");
                 If Vars[3] = 'CAMPAIGN' then
                 begin
                     If Flds.count < 5 then Error('Campaign Start and End Dates must be defined');
@@ -2314,17 +2321,11 @@ Codeunit 80002 "PC Import Export Routines"
                         Error('Start date Exceeds End Date');
                     If Dates[2] < Today then
                         Error('End date is less than today date');
-                    // check for campaign overlapps
-                    CmpReb.reset;
-                    CmpReb.Setrange("Rebate Supplier No.",Vars[1]);
                     CmpReb.Setrange("Rebate Type",CmpReb."Rebate Type"::Campaign);
-                    If CmpReb.findset then
-                    repeat
-                        If ((Dates[1] >= CmpReb."Campaign Start Date") AND (Dates[1] <= CmpReb."Campaign End Date"))
-                        Or ((Dates[2] >= CmpReb."Campaign Start Date") AND (Dates[2] <= CmpReb."Campaign End Date")) then 
-                                Error(Strsubstno('Campaign Dates Overlapps with existing Campaign %1 dates',CmpReb.Campaign));
-                    until CmpReb.next = 0;        
                 end;
+                CmpReb.Setrange("Rebate Supplier No.",Vars[1]);
+                CmpReb.Setrange(Campaign,Vars[2]);
+                If CmpReb.findset then CmpReb.Delete(True);
                 ImpData.Reset;
                 If ImpData.findset then ImpData.DeleteAll();
                 Clear(Instrm);
@@ -2339,10 +2340,11 @@ Codeunit 80002 "PC Import Export Routines"
                     begin
                         Flds := FData.Split(',');
                         If Flds.Count < 4 then
-                            Error('SKU,Campaign code,Sell Price,And Rebate % must be Defined');
-                        If Flds.get(2) = Vars[2] then
+                            Error('SKU,Rebate Supplier No.,Sell Price,And Rebate % must be Defined');
+                        If Flds.get(2) = Vars[1] then
                         begin
                             ImpData.init;
+                            ImpData."Rebate Supplier No." := Vars[1];
                             ImpData.Campaign := Vars[2];
                             ImpData.SKU := Flds.get(1).ToUpper();
                             if ImpData.SKU = '' Then Error('SKU Not defined');
@@ -2350,26 +2352,28 @@ Codeunit 80002 "PC Import Export Routines"
                                 Error(StrsubStno('SKU %1 does not exist',ImpData.SKU));
                             If Not Evaluate(ImpData."Rebate Amount",Flds.get(4)) then
                                 Error(Strsubstno('Invalid Rebate percentage %1 For SKU %2',Flds.get(4),ImpData.SKU));
-                            If (ImpData."Rebate Amount" <= 0) Or (ImpData."Rebate Amount" > 100) then
-                                Error('Rebate % <= 0 Or > 100 is invalid');
+                            If (ImpData."Rebate Amount" < 0) Or (ImpData."Rebate Amount" > 100) then
+                                Error('Rebate % < 0 Or > 100 is invalid');
                             if Vars[3] = 'CAMPAIGN' then
                             begin
                                 If Not Evaluate(ImpData."Campaign Price",Flds.get(3)) then
                                     Error(Strsubstno('Invalid Sell Price %1 For SKU %2',Flds.get(2),ImpData.SKU));
                                 If ImpData."Campaign Price" <= 0 then
                                     Error('Campaign price <= 0 is invalid');
-                                // Here we make sure that the Sku is not mixed with different vendors
+                                // Here we make sure that the Sku is not mixed with different vendors on an active campaign
                                 CmpReb.Reset;
                                 CmpReb.Setrange("Rebate Type",CmpReb."Rebate Type"::Campaign);
                                 CmpReb.SetFilter("Rebate Supplier No.",'<>%1',Vars[1]);
+                                CmpReb.SetFilter("Campaign end Date",'>=%1',Today);
                                 If CmpReb.findset then
                                 repeat
                                     CmpSku.Reset;
+                                    CmpSku.Setrange("Rebate Supplier No.",CmpReb."Rebate Supplier No.");
                                     CmpSku.Setrange(Campaign,CmpReb.Campaign);
                                     CmpSku.Setrange(SKU,ImpData.SKU);
                                     If CmpSku.findset then
                                         Error(StrsubStno('SKU %1 is already assigned to Rebate Vendor %2 Campaign %3',
-                                                                                ImpData.SKU,CmpReb."Rebate Supplier No.",cmpSku.Campaign));
+                                                                                ImpData.SKU,CmpSku."Rebate Supplier No.",cmpSku.Campaign));
                                 Until CmpReb.Next = 0;
                             end
                             Else
@@ -2379,6 +2383,7 @@ Codeunit 80002 "PC Import Export Routines"
                                 If CmpReb.findset then
                                 repeat
                                     CmpSku.Reset;
+                                    CmpSku.Setrange("Rebate Supplier No.",CmpReb."Rebate Supplier No.");
                                     CmpSku.Setrange(Campaign,CmpReb.Campaign);
                                     CmpSku.Setrange(SKU,ImpData.SKU);
                                     If CmpSku.findset then
@@ -2387,45 +2392,72 @@ Codeunit 80002 "PC Import Export Routines"
                             end;
                             If Not ImpData.insert then
                                 Error(StrSubstNo('SKU %1 has been defined multiple times',ImpData.SKU));
-                            If GuiAllowed then Win.update(1,ImpData.SKU);             
-                            CmpReb.Reset;
-                            CmpReb.Setrange("Rebate Supplier No.",Vars[1]);
-                            CmpReb.Setrange(Campaign,Vars[2]);
-                            CmpReb.Setrange("Rebate Type",CmpReb."Rebate Type"::"Auto Delivery");
-                            If Vars[3] = 'CAMPAIGN' then
-                                CmpReb.Setrange("Rebate Type",CmpReb."Rebate Type"::Campaign);
-                            If not CmpReb.findset then
-                            begin
-                                CmpReb.Init();
-                                CmpReb."Rebate Supplier No." := Vars[1];
-                                CmpReb.Campaign := Vars[2];
-                                CmpReb."Rebate Type" := CmpReb."Rebate Type"::"Auto Delivery";
-                                If Vars[3] = 'CAMPAIGN' then
-                                    CmpReb."Rebate Type" := CmpReb."Rebate Type"::Campaign;
-                                CmpReb."Campaign Start Date" := Dates[1];
-                                CmpReb."Campaign End Date" := Dates[2];
-                                CmpReb.insert;
-                            end;    
-                            ImpData.Reset();
-                            If ImpData.findset then
-                            repeat
+                            If GuiAllowed then Win.update(1,ImpData.SKU);
+                        end;
+                    end;
+                end;    
+                if Vars[3] = 'CAMPAIGN' then
+                begin
+                    ImpData.Reset();
+                    If ImpData.findset then
+                    repeat
+                        CmpReb.reset;
+                        CmpReb.Setrange("Rebate Supplier No.",Vars[1]);
+                        CmpReb.Setrange("Rebate Type",CmpReb."Rebate Type"::Campaign);
+                        If CmpReb.findset then
+                        repeat
+                            If ((Dates[1] >= CmpReb."Campaign Start Date") AND (Dates[1] <= CmpReb."Campaign End Date"))
+                            Or ((Dates[2] >= CmpReb."Campaign Start Date") AND (Dates[2] <= CmpReb."Campaign End Date")) then 
+                            Begin
                                 CmpSku.reset;
+                                CmpSku.Setrange("Rebate Supplier No.",CmpReb."Rebate Supplier No.");
                                 CmpSku.Setrange(Campaign,CmpReb.Campaign);
                                 CmpSku.Setrange(SKU,ImpData.SKU);
-                                If not CmpSku.Findset then
-                                begin
-                                    CmpSku.Init;
-                                    CmpSku.Campaign := ImpData.Campaign;
-                                    CmpSku.SKU := ImpData.SKU;
-                                    CmpSku.validate("Campaign Price",ImpData."Campaign Price");
-                                    CmpSku."Rebate Amount" := ImpData."Rebate Amount";
-                                    CmpSku.Insert;
-                                end;
-                            Until ImpData.next = 0;
-                            Commit;
+                                If CmpSku.Findset then
+                                    Error(strSubStno('SKU %1 already Assigned to date overlapped Campaign %2',ImpData.SKU,CmpReb.Campaign));
+                            end;
+                        until CmpReb.Next = 0;
+                    Until ImpData.next = 0;
+                end;                       
+                ImpData.Reset();
+                If ImpData.findset then
+                Begin
+                    CmpReb.Reset;
+                    CmpReb.Setrange("Rebate Supplier No.",Vars[1]);
+                    CmpReb.Setrange(Campaign,Vars[2]);
+                    CmpReb.Setrange("Rebate Type",CmpReb."Rebate Type"::"Auto Delivery");
+                    If Vars[3] = 'CAMPAIGN' then
+                        CmpReb.Setrange("Rebate Type",CmpReb."Rebate Type"::Campaign);
+                    If not CmpReb.findset then
+                    begin
+                        CmpReb.Init();
+                        CmpReb."Rebate Supplier No." := Vars[1];
+                        CmpReb.Campaign := Vars[2];
+                        CmpReb."Rebate Type" := CmpReb."Rebate Type"::"Auto Delivery";
+                        If Vars[3] = 'CAMPAIGN' then
+                            CmpReb."Rebate Type" := CmpReb."Rebate Type"::Campaign;
+                        CmpReb."Campaign Start Date" := Dates[1];
+                        CmpReb."Campaign End Date" := Dates[2];
+                        CmpReb.insert;
+                    end;    
+                    repeat
+                        CmpSku.reset;
+                        CmpSku.Setrange("Rebate Supplier No.",ImpData."Rebate Supplier No.");
+                        CmpSku.Setrange(Campaign,ImpData.Campaign);
+                        CmpSku.Setrange(SKU,ImpData.SKU);
+                        If not CmpSku.Findset then
+                        begin
+                            CmpSku.Init;
+                            CmpSku."Rebate Supplier No." := ImpData."Rebate Supplier No.";
+                            CmpSku.Campaign := ImpData.Campaign;
+                            CmpSku.SKU := ImpData.SKU;
+                            CmpSku.validate("Campaign Price",ImpData."Campaign Price");
+                            CmpSku."Rebate Amount" := ImpData."Rebate Amount";
+                            CmpSku.Insert;
                         end;
-                    end;     
-                end;
+                    Until ImpData.next = 0;
+                    Commit;
+                end;     
             end;
         end;
         If GuiAllowed then Win.Close;

@@ -8,6 +8,9 @@ page 80042 "PC Campaign Rebates"
     InsertAllowed = false;
     ModifyAllowed = false;
     
+    PromotedActionCategoriesML = ENU = 'Pet Culture',
+                                 ENA = 'Pet Culture';
+
     layout
     {
         area(content)
@@ -92,7 +95,7 @@ page 80042 "PC Campaign Rebates"
                         CU:Codeunit "PC Import Export Routines";
                     begin
                         If Confirm('Do you wish to Export this Campaign Data Now?') then
-                            Cu.Export_Campaign_Data(Rec.Campaign);
+                            Cu.Export_Campaign_Data(Rec."Rebate Supplier No.",Rec.Campaign);
                     end;
                 }
                 field(Campaign; Rec.Campaign)
@@ -116,17 +119,19 @@ page 80042 "PC Campaign Rebates"
                     Style = Strong;
                     trigger OnDrillDown()
                     var
-                        CSku:record "PC Campaign SKU";
+                        CSku:record "PC Campaign SKU New";
                         PG:Page "PC Campaign SKU";
                     begin
                         CSku.reset;
+                        Csku.Setrange("Rebate Supplier No.",rec."Rebate Supplier No.");
                         CSku.Setrange(Campaign,Rec.Campaign);
                         If CSku.Findset then
                         begin
                             Pg.SetTableView(CSku);
                             Pg.Show_Hide(Rec."Rebate Type" = Rec."Rebate Type"::Campaign);
                             Pg.RunModal();
-                        end;     
+                        end;
+                        CurrPage.Update(False);    
                     end;
                  }
             }
@@ -139,7 +144,7 @@ page 80042 "PC Campaign Rebates"
         //Clean up of Campaigns once they are done
         CmpReb.Reset;
         CmpReb.SetRange("Rebate Type",CmpReb."Rebate Type"::Campaign);
-        CmpReb.Setfilter("Campaign End Date",'<%1',Today);
+        CmpReb.Setfilter("Campaign End Date",'<%1',Calcdate('-2M',Today));
         If CmpReb.findSet then CmpReb.DeleteAll(true);
     end;
     local procedure Setfilters();

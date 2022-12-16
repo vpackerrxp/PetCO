@@ -92,5 +92,22 @@ tableextension 80002 "PC Sales Line Ext" extends "Sales Line"
         {
            Editable = false;
         }
+        field(80017;"Auto Delivery Rebate Code";Code[20])
+        {
+           Editable = false;
+        }
+        field(80018;"Campaign Rebate Code";Code[20])
+        {
+           Editable = false;
+        }
+        field(80019;"Campaign Rebate %";Decimal)
+        {
+           Editable = false;
+        }
+        field(80020;"Auto Delivery Rebate %";Decimal)
+        {
+           Editable = false;
+        }
+
     }   
 }

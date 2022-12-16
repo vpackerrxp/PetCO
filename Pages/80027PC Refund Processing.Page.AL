@@ -10,6 +10,9 @@ page 80027 "PC Refund Processing"
     DeleteAllowed = false;
     ModifyAllowed = false;
     
+    PromotedActionCategoriesML = ENU = 'Pet Culture',
+                                 ENA = 'Pet Culture';
+
     layout
     {
        area(Content)

@@ -3,11 +3,13 @@ page 80043 "PC Campaign SKU"
     ApplicationArea = All;
     Caption = 'Campaign SKU';
     PageType = Worksheet;
-    SourceTable = "PC Campaign SKU";
+    SourceTable = "PC Campaign SKU New";
     UsageCategory = Lists;
     InsertAllowed = false;
-    DeleteAllowed = false;
      
+    PromotedActionCategoriesML = ENU = 'Pet Culture',
+                                 ENA = 'Pet Culture';
+
     layout
     {
         area(content)
@@ -80,6 +82,7 @@ page 80043 "PC Campaign SKU"
         If index = 0 then
         begin
             CmpReb.Reset;
+            CmpReb.Setrange("Rebate Supplier No.",Rec."Rebate Supplier No.");
             CmpReb.Setrange(Campaign,Rec.Campaign);
             CmpReb.findset;
         end;

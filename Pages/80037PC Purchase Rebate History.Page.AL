@@ -9,6 +9,9 @@ page 80037 "PC Purchase Rebate History"
     ModifyAllowed = false;
     DeleteAllowed = false;
     Caption = 'Purchase Rebate History';
+    PromotedActionCategoriesML = ENU = 'Pet Culture',
+                                 ENA = 'Pet Culture';
+
     layout
     {
         area(Content)
@@ -23,11 +26,13 @@ page 80037 "PC Purchase Rebate History"
                     begin
                         If TransFilter[2] <> 0D then
                             if TransFilter[1] > TransFilter[2] then Clear(Transfilter[1]);
-                     end;
+                        Refress_data_msg(True);
+                    end;
 
                     trigger OnAssistEdit()
                     begin
                         Clear(transFilter[1]);
+                        Refress_data_msg(True);
                     end;
                 }
                 field("To Rebate Date Filter"; TransFilter[2])
@@ -38,14 +43,16 @@ page 80037 "PC Purchase Rebate History"
                     begin
                         If TransFilter[1] <> 0D then
                             if TransFilter[2] < TransFilter[1] then Clear(Transfilter[2]);
+                        Refress_data_msg(True);
                     end;
 
                     trigger OnAssistEdit()
                     begin
                         Clear(transFilter[2]);
+                        Refress_data_msg(True);
                     end;
                 }
-                field("Supplier Filter"; Supp)
+                field("Purchase Supplier Filter"; Supp)
                 {
                     ApplicationArea = All;
                     Style = Strong;
@@ -65,12 +72,44 @@ page 80037 "PC Purchase Rebate History"
                             begin
                                 Pg.GetRecord(Vend); 
                                 Supp := Vend."No.";      
+                                Refress_data_msg(True);
                            end;
                         end;
                     end;    
                     trigger OnAssistEdit()
                     begin
                         Clear(Supp);
+                        Refress_data_msg(True);
+                    end;
+                }
+                field("Rebate Supplier Filter"; RebSupp)
+                {
+                    ApplicationArea = All;
+                    Style = Strong;
+                    trigger OnLookup(var Text: Text): Boolean
+                    var
+                        Vend:record Vendor;
+                        Pg:Page "Vendor List";
+                    begin
+                        Clear(RebSupp);
+                        Vend.reset;
+                        Vend.Setfilter("No.",'SUP-*');
+                        If Vend.Findset then
+                        begin
+                            Pg.SetTableView(Vend);
+                            Pg.LookupMode := True;
+                            If Pg.RunModal() = Action::LookupOK then
+                            begin
+                                Pg.GetRecord(Vend); 
+                                RebSupp := Vend."No.";      
+                                Refress_data_msg(True);
+                           end;
+                        end;
+                    end;    
+                    trigger OnAssistEdit()
+                    begin
+                        Clear(RebSupp);
+                        Refress_data_msg(True);
                     end;
                 }
                 field("Brand Filter"; Bran)
@@ -89,29 +128,42 @@ page 80037 "PC Purchase Rebate History"
                         begin
                             pg.GetRecord(Rel);
                             Bran := rel.Brand;
+                            Refress_data_msg(True);
                         end;      
                     end; 
                     trigger OnAssistEdit()
                     begin
                         Clear(Bran);
+                        Refress_data_msg(True);
                     end;
                 }
                 field("Rebate Type Filter";RebType)
                 {
                     ApplicationArea = All;
                     Style = Strong;
+                    trigger OnValidate();
+                    begin
+                        Refress_data_msg(True);
+                    end;
+
                     trigger OnAssistEdit()
                     begin
                         Clear(RebType);
+                        Refress_data_msg(True);
                     end;
                 }
                 field("Rebate Claim Filter";Claim)
                 {
                     ApplicationArea = All;
                     Style = Strong;
+                    trigger OnValidate();
+                    begin
+                        Refress_data_msg(True);
+                    end;    
                     trigger OnAssistEdit()
                     begin
                         Clear(Claim);
+                        Refress_data_msg(True);
                     end;
                 }
                 field("1";'Clear Filters')
@@ -126,9 +178,10 @@ page 80037 "PC Purchase Rebate History"
                         Clear(Bran);
                         Clear(RebType);
                         Clear(Claim);
+                        Refress_data_msg(True);
                     end;
                 }
-               field("2";'Display Data')
+              /* field("2";'Display Data')
                 {
                     ApplicationArea = All;
                     Style = Strong;
@@ -138,11 +191,27 @@ page 80037 "PC Purchase Rebate History"
                         SetFilters();       
                     end;
                 }
+                */
+                field("X";RefMsg)
+                {
+                    ApplicationArea = All;
+                    Style = Unfavorable;
+                    ShowCaption = false;
+                    Editable = False;
+                    trigger OnDrillDown()
+                    begin
+                        SetFilters();       
+                    end;
+                }
             }    
             repeater(GroupName)
             {
                 
-                field("Supplier No."; Rec."Supplier No.")
+                field("Rebate Supplier No."; Rec."Rebate Supplier No.")
+                {
+                    ApplicationArea = All;
+                }
+                field("Purchase Supplier No."; Rec."Supplier No.")
                 {
                     ApplicationArea = All;
                 }
@@ -266,7 +335,7 @@ page 80037 "PC Purchase Rebate History"
             Case Rec."Rebate Type" of
                 Rec."Rebate Type"::Marketing: Exit(Supp."Marketing Rebate %");
                 Rec."Rebate Type"::Volume: Exit(Supp."Volume Rebate %");
-                Rec."Rebate Type"::Supply: Exit(Supp."Supply Chain Rebate %");
+                Rec."Rebate Type"::"Data Share": Exit(Supp."Supply Chain Rebate %");
             end;
         end;
         exit(0);        
@@ -318,8 +387,9 @@ page 80037 "PC Purchase Rebate History"
     var
         PCR:record "PC Purchase Rebates";
         win:Dialog;
+        i:Integer;
     begin
-        win.Open('Rendering Data .. Please Wait');
+        win.Open('Rendering Data .. Record Count #1########');
         Rec.Reset();
         If Rec.Findset then Rec.DeleteAll(False);
         PCR.Reset;
@@ -336,22 +406,37 @@ page 80037 "PC Purchase Rebate History"
         else if (TransFilter[2] <> 0D) then
             PCR.Setfilter("Rebate Date", '..%1', TransFilter[2]);
         If Supp <> '' then PCR.Setrange("Supplier No.",Supp);
+        If RebSupp <> '' then PCR.Setrange("Rebate Supplier No.",RebSupp);
         If Bran <> '' then PCR.Setrange(Brand,Bran);
         If RebType <> RebType::All then PCR.setrange("Rebate Type",RebType - 1);
+        Clear(i);
         If PCR.FindSet() then
         repeat
+            i += 1;
+            Win.Update(1,i);
             Rec.Copy(PCR);
             Rec.Insert(false);
         until PCR.next = 0;
         Win.close;
+        Refress_data_msg(False);
         CurrPage.Update(False);
     end;
+    local procedure Refress_data_msg(OnOff:boolean)
+    begin
+        Clear(RefMsg);
+        If OnOff then RefMsg := 'Data Refresh Required .. Press To Refresh Data';
+        CurrPage.update(false);
+    end;
+
   
     Var
         Supp:code[20];
+        RebSupp:Code[20];
         Bran:Code[30];
-        RebType: Option All,Volume,Marketing,Supplier;
+        RebType: Option All,Volume,Marketing,"Data Share";
         TransFilter: array[2] of date;
         Claim: Option All,Claimed,UnClaimed;
+        RefMsg:text;
+
 
 }

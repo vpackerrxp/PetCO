@@ -42,7 +42,22 @@ pageextension 80002 "PC Item List Ext" extends "Item List"
                     var
                         cu:Codeunit "PC Shopify Routines";
                     begin
-                        If Confirm('Synchronise All Shopify Items Now?',True) then cu.Process_Shopify_Items('');
+                        If Confirm('Synchronise All Shopify Items Now?',True) then cu.Process_Items('',false);
+                    end;
+                }
+                action(MsgXX)
+                {
+                    ApplicationArea = all;
+                    Caption = 'Synchronise All Shopify Item Pricing';
+                    Image = Change;
+                    Promoted = true;
+                    PromotedCategory = Category11;
+                    ToolTip = 'Updates All Shopify Item Pricing';
+                    trigger OnAction()
+                    var
+                        cu:Codeunit "PC Shopify Routines";
+                    begin
+                        If Confirm('Synchronise All Shopify Items Pricing Now?',True) then cu.Process_Items('',True);
                     end;
                 }
                 action(Msg1A)
@@ -72,7 +87,7 @@ pageextension 80002 "PC Item List Ext" extends "Item List"
                             Temp.Reset;         
                             If Temp.Findset then
                             repeat
-                                Cu.Process_Shopify_Items(Temp."No.");  
+                                Cu.Process_Items(Temp."No.",false);  
                             until temp.Next = 0;
                             rec.Reset;
                             CurrPage.update(false);

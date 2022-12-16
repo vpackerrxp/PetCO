@@ -28,6 +28,7 @@ pageextension 80011 "PC Genral Ledger Setup Ext" extends "General Ledger Setup"
                     field("Supply Chain Rebate Acc"; rec."Supply Chain Rebate Acc")
                     {
                         ApplicationArea = All;
+                        Caption = 'Data Share Rebate Acc';
                         ShowMandatory = true;
                     }
 

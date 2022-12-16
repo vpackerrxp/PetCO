@@ -10,6 +10,9 @@ page 80017 "PC Shopify Order Exceptions"
     DeleteAllowed = false;
     Editable = false;
     
+    PromotedActionCategoriesML = ENU = 'Pet Culture',
+                                 ENA = 'Pet Culture';
+
     layout
     {
         area(Content)

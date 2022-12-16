@@ -6,9 +6,12 @@ page 80011 "PC Supplier Brand Rebates"
     ApplicationArea = All;
     SourceTable = "PC Supplier Brand Rebates";
     InsertAllowed = false;
-    //DeleteAllowed = false;
+    DeleteAllowed = false;
     Editable = true;
     
+    PromotedActionCategoriesML = ENU = 'Pet Culture',
+                                 ENA = 'Pet Culture';
+
     layout
     {
         area(Content)
@@ -43,6 +46,37 @@ page 80011 "PC Supplier Brand Rebates"
                     trigger OnAssistEdit()
                     begin
                         Clear(Supp);
+                        SetFilters();
+                    end;
+                }
+                field("Rebate Supplier Filter"; RebSupp)
+                {
+                    ApplicationArea = All;
+                    Style = Strong;
+                    Visible = SuppFlg; 
+                    trigger OnLookup(var Text: Text): Boolean
+                    var
+                        Vend:record Vendor;
+                        Pg:Page "Vendor List";
+                    begin
+                        Clear(RebSupp);
+                        Vend.reset;
+                        Vend.Setfilter("No.",'SUP-*');
+                        If Vend.Findset then
+                        begin
+                            Pg.SetTableView(Vend);
+                            Pg.LookupMode := True;
+                            If Pg.RunModal() = Action::LookupOK then
+                            begin
+                                Pg.GetRecord(Vend); 
+                                RebSupp := Vend."No.";      
+                           end;
+                        end;
+                        SetFilters();
+                    end;    
+                    trigger OnAssistEdit()
+                    begin
+                        Clear(RebSupp);
                         SetFilters();
                     end;
                 }
@@ -155,6 +189,7 @@ page 80011 "PC Supplier Brand Rebates"
                 field("Supply Chain Rebate %"; rec."Supply Chain Rebate %")
                 {
                    ApplicationArea = All;
+                   Caption = 'Data Share Rebate %';
                    Visible = Mode = Mode::"Purch Rebates";
                 }
 
@@ -208,64 +243,73 @@ page 80011 "PC Supplier Brand Rebates"
                     Dat:date;
                 begin
                     If Confirm('Auto Update List Now?',True) then
-                    begin
-                        Win.open('Adding Supplier #1############\'
-                                +'Brand           #2###################');
-
-                        dat := Today;
-                        SupReb.Reset();
-                        SupReb.Setrange("Rebate Status",SupReb."Rebate Status"::Open);
-                        if SupReb.Findset then Dat := SupReb."Rebate Start Date Period";
-                        Ven.Reset;
-                        Ven.SetFilter("No.",'SUP-*');
-                        If Ven.Findset then
-                        repeat
-                            Item.Reset;
-                            Item.Setrange("Vendor No.",Ven."No.");
-                            Item.Setrange(Type,Item.Type::Inventory);
-                            If Item.Findset then
-                            repeat
-                                If not SupReb.Get(Ven."No.",Item.Brand,Dat) then
-                                begin
-                                    Win.update(1,Ven."No.");
-                                    Win.Update(2,Item.Brand);
-                                    SupReb.init;
-                                    SupReb."Supplier No." := Ven."No.";
-                                    SupReb."Rebate Supplier No." := Ven."No.";   
-                                    SupReb.Brand := Item.Brand;
-                                    SupReb."Rebate Start Date Period" := Dat;
-                                    SupReb."Rebate Status" := SupReb."Rebate Status"::Open;
-                                    SupReb.Insert;
-                                end;
-                            until Item.Next = 0;
-                        until Ven.next = 0;
-                        ItemVen.Reset;
-                       if ItemVen.findset then
-                        repeat
-                            Item.Get(ItemVen."Item No.");
-                            iF Item."Vendor No." <> '' then
-                            begin
-                                If not SupReb.Get(ItemVen."Vendor No.",Item.Brand,dat) then
-                                begin
-                                    Win.update(1,ItemVen."Vendor No.");
-                                    Win.Update(2,Item.Brand);
-                                    SupReb.init;
-                                    SupReb."Supplier No." := ItemVen."Vendor No.";   
-                                    SupReb."Rebate Supplier No." := ItemVen."Vendor No.";   
-                                    SupReb.Brand := Item.Brand;
-                                    SupReb."Rebate Start Date Period" := Dat;
-                                    SupReb."Rebate Status" := SupReb."Rebate Status"::Open;
-                                    SupReb.Insert;
-                                end;
-                            end;    
-                        until ItemVen.Next = 0;
-                        win.close;
-                    end;                        
+                        Auto_Update();
                 end;
             }
         }
     }
-    
+    local procedure Auto_Update()
+    var
+        Ven:Record Vendor;
+        Item:Record Item;
+        SupReb:Record "PC Supplier Brand Rebates";
+        ItemVen:Record "Item Vendor";
+        win:dialog;
+        Dat:date;
+    begin
+        Win.open('Adding Supplier #1############\'
+                +'Brand           #2###################');
+
+        dat := Today;
+        SupReb.Reset();
+        SupReb.Setrange("Rebate Status",SupReb."Rebate Status"::Open);
+        if SupReb.Findset then Dat := SupReb."Rebate Start Date Period";
+        Ven.Reset;
+        Ven.SetFilter("No.",'SUP-*');
+        If Ven.Findset then
+        repeat
+            Item.Reset;
+            Item.Setrange("Vendor No.",Ven."No.");
+            Item.Setrange(Type,Item.Type::Inventory);
+            If Item.Findset then
+            repeat
+                If not SupReb.Get(Ven."No.",Item.Brand,Dat) then
+                begin
+                    Win.update(1,Ven."No.");
+                    Win.Update(2,Item.Brand);
+                    SupReb.init;
+                    SupReb."Supplier No." := Ven."No.";
+                    SupReb."Rebate Supplier No." := Ven."No.";   
+                    SupReb.Brand := Item.Brand;
+                    SupReb."Rebate Start Date Period" := Dat;
+                    SupReb."Rebate Status" := SupReb."Rebate Status"::Open;
+                    SupReb.Insert;
+                end;
+            until Item.Next = 0;
+        until Ven.next = 0;
+        ItemVen.Reset;
+        if ItemVen.findset then
+        repeat
+            Item.Get(ItemVen."Item No.");
+            iF Item."Vendor No." <> '' then
+            begin
+                If not SupReb.Get(ItemVen."Vendor No.",Item.Brand,dat) then
+                begin
+                    Win.update(1,ItemVen."Vendor No.");
+                    Win.Update(2,Item.Brand);
+                    SupReb.init;
+                    SupReb."Supplier No." := ItemVen."Vendor No.";   
+                    SupReb."Rebate Supplier No." := ItemVen."Vendor No.";   
+                    SupReb.Brand := Item.Brand;
+                    SupReb."Rebate Start Date Period" := Dat;
+                    SupReb."Rebate Status" := SupReb."Rebate Status"::Open;
+                    SupReb.Insert;
+                end;
+            end;    
+        until ItemVen.Next = 0;
+        win.close;
+    end;
+
     procedure Set_Page_Mode(PMode:option;Ven:code[20])
     begin
         Mode := Pmode;
@@ -277,12 +321,15 @@ page 80011 "PC Supplier Brand Rebates"
     begin
         rec.Reset;
         If Supp <> '' then rec.Setrange("Supplier No.",Supp);
+        If RebSupp <> '' then rec.Setrange("Rebate Supplier No.",RebSupp);
         If Bran <> '' Then rec.Setrange(Brand,Bran);
         If Stat <> Stat::All then rec.Setrange("Rebate Status",Stat - 1);
         CurrPage.update(false);
     end;
     trigger OnOpenPage()
     begin
+        If Confirm('Do you wish to check for any new Supplier Brand Combinations Now,',False) then
+            Auto_Update();
         SetFilters();
     end;
     trigger OnAfterGetRecord()
@@ -296,6 +343,7 @@ page 80011 "PC Supplier Brand Rebates"
 
     Var
         Supp:Code[20];
+        RebSupp:code[20];
         Bran:Code[30];
         Stat:Option All,Open,Closed;  
         RebType: Option All,Vol,Mark,Supp;

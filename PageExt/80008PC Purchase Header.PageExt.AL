@@ -238,10 +238,17 @@ pageextension 80008 "PC Purchase Header Ext" extends "Purchase Order"
                                    (Rec.Status = Rec.Status::Released) AND (Rec."EDI Status" = Rec."EDI Status"::"EDI Vendor") then
                                 begin
                                     if Confirm('Send Original PO via EDI Now',True) then
+                                    begin
                                         Cu.Build_EDI_Purchase_Order(rec,'ORIGINAL');
-                                    end 
-                                    else 
-                                        Message('Purchase Order is not in the correct state to raise Original via EDI');    
+                                        CU.EDI_Execution_Transaction_Log(rec,0);
+                                    end;    
+                                end 
+                                else If confirm('Purchase Order is not in the correct state to raise Original via EDI .. send Regardless',false) then
+                                begin
+                                    Cu.Build_EDI_Purchase_Order(rec,'ORIGINAL');
+                                    CU.EDI_Execution_Transaction_Log(rec,0);
+                                end;    
+                                
                             end;    
                             2:
                             Begin
@@ -254,10 +261,14 @@ pageextension 80008 "PC Purchase Header Ext" extends "Purchase Order"
                                         Excp.SetRange("Purchase Order No.",Rec."No.");
                                         If Excp.FindSet() then Excp.DeleteAll();        
                                         Cu.Build_EDI_Purchase_Order(rec,'REPLACE');
+                                        CU.EDI_Execution_Transaction_Log(rec,0);
                                     end;    
                                 end 
-                                else 
-                                    Message('Purchase Order is not in the correct state to raise REPLACE via EDI');    
+                                else If confirm('Purchase Order is not in the correct state to raise Replace via EDI .. send Regardless',false) then
+                                begin
+                                    Cu.Build_EDI_Purchase_Order(rec,'REPLACE');
+                                    CU.EDI_Execution_Transaction_Log(rec,0);
+                                end;    
                             end;
                             3:
                             Begin

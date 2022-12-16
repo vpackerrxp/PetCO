@@ -8,6 +8,9 @@ page 80040 "PC Check Inv Reconciliations"
     Editable = false;
     Caption = 'Check Invoice Reconcilliation';
     
+    PromotedActionCategoriesML = ENU = 'Pet Culture',
+                                 ENA = 'Pet Culture';
+
     layout
     {
         area(Content)

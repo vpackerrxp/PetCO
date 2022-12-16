@@ -8,6 +8,9 @@ page  80007 "PC Shopify Order Lines"
     InsertAllowed = false;
     DeleteAllowed = false;
    
+    PromotedActionCategoriesML = ENU = 'Pet Culture',
+                                 ENA = 'Pet Culture';
+
     layout
     {
         area(Content)

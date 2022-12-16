@@ -758,29 +758,31 @@ procedure FulFilo_Login_Connection():Boolean
             Parms.add('page','1');
             if FulFilio_Data(Paction::GET,'/api/v1/inventories',Parms,PayLoad,Data) then
             Begin
-                Data.Get('success',JsToken[1]); 
-                If JsToken[1].AsValue().AsBoolean() then
-                begin
-                    Data.Get('pagination',JsToken[1]);
-                    JsToken[1].SelectToken('number_of_pages',JsToken[2]);
-                    Cnt := JsToken[2].AsValue().AsInteger();
-                    Process_FulFilo_Stock_Levels(Data,1,Cnt);
-                end;     
-                If Cnt > 1 then 
-                begin
-                    For i := 2 To Cnt do
+                if Data.Get('success',JsToken[1]) then 
+                Begin
+                    If JsToken[1].AsValue().AsBoolean() then
                     begin
-                        Clear(Parms);
-                        Clear(PayLoad);
-                        Clear(Data);
-                        Parms.add('limit','250');
-                        Parms.add('page',Format(i));
-                        FulFilio_Data(Paction::GET,'/api/v1/inventories',Parms,PayLoad,Data);
-                        Data.Get('success',JsToken[1]); 
-                        If JsToken[1].AsValue().AsBoolean() then Process_FulFilo_Stock_Levels(Data,i,Cnt);
-                    end;        
-                end;
-                RunFlg := True;
+                        Data.Get('pagination',JsToken[1]);
+                        JsToken[1].SelectToken('number_of_pages',JsToken[2]);
+                        Cnt := JsToken[2].AsValue().AsInteger();
+                        Process_FulFilo_Stock_Levels(Data,1,Cnt);
+                    end;     
+                    If Cnt > 1 then 
+                    begin
+                        For i := 2 To Cnt do
+                        begin
+                            Clear(Parms);
+                            Clear(PayLoad);
+                            Clear(Data);
+                            Parms.add('limit','250');
+                            Parms.add('page',Format(i));
+                            FulFilio_Data(Paction::GET,'/api/v1/inventories',Parms,PayLoad,Data);
+                            if Data.Get('success',JsToken[1]) then
+                                If JsToken[1].AsValue().AsBoolean() then Process_FulFilo_Stock_Levels(Data,i,Cnt);
+                        end;        
+                    end;
+                    RunFlg := True;
+                end;    
             end 
             else If GuiAllowed then Message('Failed Communications to fulfilio for inventory levels');
         end
@@ -1175,19 +1177,16 @@ procedure FulFilo_Login_Connection():Boolean
         Until PurchHdr.next = 0;
     end;
    */ 
-  // rountine to include rebate information as required on purchase lines
+  // routine to include rebate information as required on purchase lines
     Procedure Purch_Rebates(var Purchline:record "Purchase Line")
     var
-        GenSetup:Record "General Ledger Setup";
         SupBrand:Record "PC Supplier Brand Rebates";
         PurchHdr:record "Purchase Header";    
         Item:Record Item;
-        Ven:Record Vendor;
     begin
         PurchHdr.Get(Purchline."Document Type",Purchline."Document No.");
         If (Purchline.Type = Purchline.Type::Item) AND (PurchHdr."Order Type" = Purchhdr."Order Type"::Fulfilo) then
         begin
-            GenSetup.Get;
             Item.Get(Purchline."No.");
             If Item.Type = Item.Type::Inventory then
             begin
@@ -1201,6 +1200,8 @@ procedure FulFilo_Login_Connection():Boolean
                     Purchline."Line Rebate %" := SupBrand."Volume Rebate %";
                     Purchline."Line Rebate %" += SupBrand."Marketing Rebate %";
                     Purchline."Line Rebate %" += SupBrand."Supply Chain Rebate %";
+                    Purchline.Brand := SupBrand.Brand;
+                    Purchline."Rebate Supplier No." := SupBrand."Rebate Supplier No.";
                 end;
                 Purchline.validate("Indirect Cost %",-Purchline."Line Rebate %");    
             end;    
@@ -1281,23 +1282,28 @@ procedure FulFilo_Login_Connection():Boolean
                     Reb."Document No." := PurchaseHeader."Posting No.";
                     Reb."Rebate Date" := PurchaseHeader."Posting Date";
                     Reb."Supplier No." := PurchaseHeader."Buy-from Vendor No.";
+                    Reb."Rebate Supplier No." := SupBrand."Rebate Supplier No.";
                     Reb."Item No." := PurchaseLine."No.";
+                    Reb."Document Line No." := PurchaseLine."Line No.";
                     Reb.Brand := SupBrand.Brand;
                     Case i of
                         1:
                         begin
                             Reb."Rebate Type" := Reb."Rebate Type"::Volume;
-                            Reb."Rebate Value" := amt * ABS(SupBrand."Volume Rebate %"/PurchaseLine."Indirect Cost %");  
+                            Reb."Rebate Value" := amt * ABS(SupBrand."Volume Rebate %"/PurchaseLine."Indirect Cost %");
+                            Reb."Rebate %" := SupBrand."Volume Rebate %";  
                         end;
                         2:
                         begin
                             Reb."Rebate Type" := Reb."Rebate Type"::Marketing;
-                            Reb."Rebate Value" := amt * ABS(SupBrand."Marketing Rebate %"/PurchaseLine."Indirect Cost %");  
+                            Reb."Rebate Value" := amt * ABS(SupBrand."Marketing Rebate %"/PurchaseLine."Indirect Cost %");
+                            Reb."Rebate %" := SupBrand."Marketing Rebate %";  
                         end;
                         3:
                         begin
-                            Reb."Rebate Type" := Reb."Rebate Type"::Supply;
-                            Reb."Rebate Value" := amt * ABS(SupBrand."Supply Chain Rebate %"/PurchaseLine."Indirect Cost %");  
+                            Reb."Rebate Type" := Reb."Rebate Type"::"Data Share";
+                            Reb."Rebate Value" := amt * ABS(SupBrand."Supply Chain Rebate %"/PurchaseLine."Indirect Cost %"); 
+                            Reb."Rebate %" := SupBrand."Supply Chain Rebate %"; 
                         end;
                     end;
                     Reb.Modify();

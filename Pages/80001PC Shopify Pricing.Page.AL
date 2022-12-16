@@ -7,6 +7,9 @@ page 80001 "PC Shopify Pricing"
     RefreshOnActivate = True;
     DelayedInsert = true;
     Caption = 'Shopify Price Management';        
+    PromotedActionCategoriesML = ENU = 'Pet Culture',
+                                 ENA = 'Pet Culture';
+
     layout
     {
         area(Content)

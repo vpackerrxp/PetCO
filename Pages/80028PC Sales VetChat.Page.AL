@@ -10,6 +10,9 @@ page 80028 "PC Sales VetChat"
     ModifyAllowed = false;
     SaveValues = true;
     
+    PromotedActionCategoriesML = ENU = 'Pet Culture',
+                                 ENA = 'Pet Culture';
+
     layout
     {
        area(Content)

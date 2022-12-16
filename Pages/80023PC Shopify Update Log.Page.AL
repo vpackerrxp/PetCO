@@ -8,6 +8,9 @@ page 80023 "PC Shopify Update Log"
     InsertAllowed = false;
     ModifyAllowed = false;
    
+    PromotedActionCategoriesML = ENU = 'Pet Culture',
+                                 ENA = 'Pet Culture';
+
     layout
     {
         area(Content)

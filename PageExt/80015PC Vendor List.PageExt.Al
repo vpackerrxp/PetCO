@@ -95,6 +95,21 @@ layout
                     Pg.RunModal();     
                 end;
             }
+           Action(Msgx)
+            {
+                ApplicationArea = all;
+                Caption = 'Purchase History';
+                Image = Change;
+                Promoted = true;
+                PromotedCategory = Category7;
+                ToolTip = 'Displays Purchase History';
+                trigger OnAction()
+                var
+                    Pg:Page "PC Purchase History";
+                begin
+                    Pg.RunModal();     
+                end;
+            }
             Action(MsgE)
             {
                 ApplicationArea = all;

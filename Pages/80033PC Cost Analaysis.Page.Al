@@ -9,6 +9,9 @@ page 80033 "PC Cost Analysis"
     InsertAllowed = false;
     ModifyAllowed = false;
     DeleteAllowed = false;
+    PromotedActionCategoriesML = ENU = 'Pet Culture',
+                                 ENA = 'Pet Culture';
+
     layout
     {
         area(Content)
@@ -171,7 +174,7 @@ page 80033 "PC Cost Analysis"
                     Caption = 'RRP inc (GST)';
                     Editable = false;   
                 }
-                field("Sell Price inc (GST)";rec.Get_Price())
+                field("Sell Price inc (GST)";rec.Get_Price(RRP))
                 {
                     ApplicationArea = All;
                     Editable = false;   
@@ -254,10 +257,10 @@ page 80033 "PC Cost Analysis"
     begin
         Clear(FirstMarg);
         Clear(FinalMarg);
-        If rec.Get_Price() > 0 then 
+        If rec.Get_Price(RRP) > 0 then 
         begin
-            FirstMarg := (rec.Get_Price() - rec.Get_First_Costs())/rec.Get_Price() * 100;
-            FinalMarg := (rec.Get_Price() - rec.Get_Net_Cost())/rec.Get_Price() * 100;
+            FirstMarg := (rec.Get_Price(RRP) - rec.Get_First_Costs())/rec.Get_Price(RRP) * 100;
+            FinalMarg := (rec.Get_Price(RRP) - rec.Get_Net_Cost())/rec.Get_Price(RRP) * 100;
         end;
     end;
     local Procedure SetFilters()
@@ -277,6 +280,7 @@ page 80033 "PC Cost Analysis"
         fCst:Decimal;
         Win:dialog;
         i:Decimal;
+        RRP:Decimal;
     begin
         Clear(i);
         Clear(AvgMarg);
@@ -287,11 +291,11 @@ page 80033 "PC Cost Analysis"
         repeat
             i += 10000/Item.Count;
             Win.update(1,i div 1);
-            If Item.Get_Price() > 0 then 
+            If Item.Get_Price(RRP) > 0 then 
             begin
                 FCst := Item.Get_List_Cost() - (Item.Get_List_Cost() * Item.Get_Rebate_Disc(0)/100);
-                AvgMarg[1] += (Item.Get_Price() - FCst)/Item.Get_Price() * 100;
-                AvgMarg[2] += (Item.Get_Price() - Item.Get_Net_Cost())/Item.Get_Price() *100;
+                AvgMarg[1] += (Item.Get_Price(RRP) - FCst)/Item.Get_Price(RRP) * 100;
+                AvgMarg[2] += (Item.Get_Price(RRP) - Item.Get_Net_Cost())/Item.Get_Price(RRP) *100;
             end;  
         until Item.Next = 0;
         AvgMarg[1] /= Item.Count;
@@ -301,6 +305,7 @@ page 80033 "PC Cost Analysis"
     var
         FirstMarg:Decimal;
         FinalMarg:Decimal;
+        RRP:Decimal;
         Supp:Code[20];
         Bran:Code[30];
         AvgMarg:array[2] of Decimal;

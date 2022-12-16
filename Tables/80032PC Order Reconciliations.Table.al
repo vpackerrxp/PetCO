@@ -1,7 +1,7 @@
 table 80032 "PC Order Reconciliations"
 {
     Caption = 'Order Reconciliations';
-   
+
     fields
     {
         field(10;"Shopify Order ID";BigInteger)
@@ -37,6 +37,19 @@ table 80032 "PC Order Reconciliations"
         field(80;"Apply Status";option)
         {
             OptionMembers = UnApplied,CashApplied,Completed;
+            Editable = false;
+        }
+        field(90;"Shopify Display ID";BigInteger)
+        {
+            Editable = false;
+            Caption = 'Shopify Order ID';
+        }
+        field(100;"Extra Refund Count";Integer)
+        {
+            Editable = false;
+        }
+        field(110;"Refund Shopify ID";BigInteger)
+        {
             Editable = false;
         }
     }

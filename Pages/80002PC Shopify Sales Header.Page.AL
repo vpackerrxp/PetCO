@@ -3,6 +3,9 @@ page 80002 "PC Shopify Sales Header"
     PageType = List;
     SourceTable = "PC Shopify Order Header";
     
+    PromotedActionCategoriesML = ENU = 'Pet Culture',
+                                 ENA = 'Pet Culture';
+
     layout
     {
         area(Content)

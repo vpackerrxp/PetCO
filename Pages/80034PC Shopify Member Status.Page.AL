@@ -5,6 +5,9 @@ page 80034 "PC Shopify Member Status"
     SourceTableView = Where("Shopify Order Member Status" = filter(''));
     Caption = 'Shopify Member Status';
     
+    PromotedActionCategoriesML = ENU = 'Pet Culture',
+                                 ENA = 'Pet Culture';
+
     layout
     {
         area(Content)

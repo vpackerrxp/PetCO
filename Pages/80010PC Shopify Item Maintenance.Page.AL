@@ -8,6 +8,9 @@ page 80010 "PC Shopify Item Maintenance"
     DeleteAllowed = false;
     ModifyAllowed = false;
     Caption = 'Shopify Item Maintenance';
+    PromotedActionCategoriesML = ENU = 'Pet Culture',
+                                 ENA = 'Pet Culture';
+
     layout
     {
         area(Content)
@@ -110,7 +113,7 @@ page 80010 "PC Shopify Item Maintenance"
                             If Temp.Findset then
                             repeat
                                 Win.update(1,Temp."No.");
-                                Cu.Delete_Items(Temp."No.");  
+                                Cu.Delete_Items(Temp."No.",false);  
                             until Temp.Next = 0
                             else
                                 Message('Nothing Found Marked for Removal');
@@ -155,7 +158,7 @@ page 80010 "PC Shopify Item Maintenance"
                             If Temp.Findset then
                             repeat
                                 Win.update(1,Temp."No.");
-                                Cu.Process_Shopify_Items(Temp."No.");  
+                                Cu.Process_Items(Temp."No.",false);  
                             until temp.Next = 0
                             else
                                 Message('Nothing Found Marked For Addition');

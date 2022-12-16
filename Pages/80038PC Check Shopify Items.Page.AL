@@ -10,6 +10,9 @@ page 80038 "PC Check Shopify Items"
     ModifyAllowed = false;
     DeleteAllowed = false;
 
+    PromotedActionCategoriesML = ENU = 'Pet Culture',
+                                 ENA = 'Pet Culture';
+
     layout
     {
         area(Content)
@@ -106,10 +109,10 @@ page 80038 "PC Check Shopify Items"
                                     Item.Get(rec."No.");
                                     Item."Shopify Update Flag" := True;
                                     Item.modify(false);
-                                    Cu.Process_Shopify_Items(Item."No.");
+                                    Cu.Process_Items(Item."No.",false);
                                     Item."Shopify Update Flag" := True;
                                     Item.modify(false);
-                                    Cu.Process_Shopify_Items(Item."No.");    
+                                    Cu.Process_Items(Item."No.",false);    
                                     Cu.Check_Product_ID(Item,Cnt);
                                     if Cnt = Rel.Count then rec.Delete(false);
                                 end;
@@ -156,8 +159,8 @@ page 80038 "PC Check Shopify Items"
                                 i+=1;
                                 rel.modify(false);
                             until rel.next = 0;
-                            Cu.Process_Shopify_Items(Rec."No.");
-                            Cu.Process_Shopify_Items(Rec."No.");
+                            Cu.Process_Items(Rec."No.",false);
+                            Cu.Process_Items(Rec."No.",false);
                             Item.Get(rec."No.");    
                             Message(Cu.Check_Product_ID(Item,i));
                         end;    

@@ -10,6 +10,9 @@ page 80019 "PC Sales Analysis"
     DeleteAllowed = false;
     ModifyAllowed = false;
     
+    PromotedActionCategoriesML = ENU = 'Pet Culture',
+                                 ENA = 'Pet Culture';
+
     layout
     {
        area(Content)

@@ -1,4 +1,4 @@
-codeunit 80006 "PC Reconcillations"
+codeunit 80005 "PC Reconcillations"
 {
     procedure Build_Cash_Receipts(var Buff:record "PC Shopify Order Header";PostDate:date)
     var
@@ -554,7 +554,12 @@ codeunit 80006 "PC Reconcillations"
             begin
                 Clear(Doc);
                 OrdHdr.Reset;
-                OrdHdr.Setrange("Shopify Order ID",RecCon."Shopify Order ID");
+                OrdHdr.Setrange("Order Status",OrdHdr."Order Status"::Closed);
+                OrdHdr.Setfilter("BC Reference No.",'<>%1','');
+                 if RecCon."Refund Shopify ID" <> 0 then
+                    OrdHdr.Setrange("Shopify Order ID",RecCon."Refund Shopify ID")
+                else    
+                    OrdHdr.Setrange("Shopify Order ID",RecCon."Shopify Order ID");
                 OrdHdr.SetFilter("Order Type",'%1|%2',OrdHdr."Order Type"::invoice,OrdHdr."Order Type"::Cancelled); 
                 if RecCon."Shopify Order Type" = RecCon."Shopify Order Type"::Refund then
                     OrdHdr.SetRange("Order Type",OrdHdr."Order Type"::CreditMemo); 
@@ -801,10 +806,15 @@ codeunit 80006 "PC Reconcillations"
                 RecCon."Payment Gate Way"::Misc: ClearAcc := GLSetup."Misc Clearing Acc";
             end;     
             If ClearAcc <> '' then
-            begin
+            begin 
                 Clear(Doc);
                 OrdHdr.Reset;
-                OrdHdr.Setrange("Shopify Order ID",RecCon."Shopify Order ID");
+                OrdHdr.Setrange("Order Status",OrdHdr."Order Status"::Closed);
+                OrdHdr.Setfilter("BC Reference No.",'<>%1','');
+                 If RecCon."Refund Shopify ID" <> 0 then
+                    OrdHdr.Setrange("Shopify Order ID",RecCon."Refund Shopify ID")
+                else    
+                    OrdHdr.Setrange("Shopify Order ID",RecCon."Shopify Order ID");
                 OrdHdr.SetFilter("Order Type",'%1|%2',OrdHdr."Order Type"::invoice,OrdHdr."Order Type"::Cancelled); 
                 if RecCon."Shopify Order Type" = RecCon."Shopify Order Type"::Refund then
                     OrdHdr.SetRange("Order Type",OrdHdr."Order Type"::CreditMemo); 
@@ -959,8 +969,12 @@ codeunit 80006 "PC Reconcillations"
         If Recon.Findset then
         repeat
             OrdHdr.Reset();
-            OrdHdr.Setrange("Shopify Order ID",Recon."Shopify Order ID");
+            If ReCon."Refund Shopify ID" <> 0 then
+                OrdHdr.Setrange("Shopify Order ID",ReCon."Refund Shopify ID")
+            else    
+                OrdHdr.Setrange("Shopify Order ID",ReCon."Shopify Order ID");
             OrdHdr.Setrange("Order Type",Recon."Shopify Order Type");
+            OrdHdr.SetFilter(OrdHdr."BC Reference No.",'<>%1','');
             if Doc <> '' then
                 OrdHdr.Setrange(OrdHdr."BC Reference No.",Doc);
             If OrdHdr.FindSet() then
@@ -1006,7 +1020,7 @@ codeunit 80006 "PC Reconcillations"
         If Doc = '' then
         begin
             Recon.Reset;
-            Recon.Setrange("Apply Status",recon."Apply Status"::Completed);    
+            Recon.Setrange("Apply Status",recon."Apply Status"::Completed);
             Recon.Setfilter("Order Total",'>0');
             If Recon.Findset then
                 Recon.ModifyAll("Apply Status",Recon."Apply Status"::CashApplied,False);
@@ -1019,7 +1033,10 @@ codeunit 80006 "PC Reconcillations"
             If Recon.Findset then
             repeat
                 OrdHdr.Reset();
-                OrdHdr.Setrange("Shopify Order ID",Recon."Shopify Order ID");
+                If Recon."Refund Shopify ID" <> 0 then
+                    OrdHdr.Setrange("Shopify Order ID",ReCon."Refund Shopify ID")
+                else    
+                    OrdHdr.Setrange("Shopify Order ID",Recon."Shopify Order ID");
                 OrdHdr.Setrange("Order Type",Recon."Shopify Order Type");
                 OrdHdr.Setrange(OrdHdr."BC Reference No.",Doc);
                 If OrdHdr.FindSet() then
@@ -1073,7 +1090,10 @@ codeunit 80006 "PC Reconcillations"
         If Recon.Findset then
         repeat
             OrdHdr.Reset();
-            OrdHdr.Setrange("Shopify Order ID",Recon."Shopify Order ID");
+            If Recon."Refund Shopify ID" <> 0 then
+                OrdHdr.Setrange("Shopify Order ID",Recon."Refund Shopify ID")
+            else    
+                OrdHdr.Setrange("Shopify Order ID",Recon."Shopify Order ID");
             OrdHdr.Setrange("Order Type",Recon."Shopify Order Type");
             OrdHdr.Setfilter("BC Reference No.",'<>%1','');
             If OrdHdr.FindSet() then

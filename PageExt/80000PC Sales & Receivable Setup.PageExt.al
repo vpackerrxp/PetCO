@@ -116,6 +116,11 @@ pageextension 80000 "PC Sales & Rec Setup Ext" extends "Sales & Receivables Setu
                         {
                             ApplicationArea = All;
                         }
+                        field("Ext Refund Order Lookback Period";rec."Ext Refund Order Lookback Per")
+                        {
+                            ApplicationArea = All;
+                            Caption = 'Period in Months To Check Extra Refunds';
+                        }
                     }
                     Group(Exceptions)
                     {
@@ -132,7 +137,7 @@ pageextension 80000 "PC Sales & Rec Setup Ext" extends "Sales & Receivables Setu
                                 Rec.Get;
                                 If Confirm('Send Test Email', true) then
                                 begin
-                                    If Cu.Send_Email_Msg('Test Email','This is a test',True,'') then
+                                    If Cu.Send_Email_Msg('Test Email','This is a test',rec."Exception Email Address") then
                                         Message('Email Sent Successfully')
                                     else
                                         Message('Failed To Send Email');
@@ -340,7 +345,7 @@ pageextension 80000 "PC Sales & Rec Setup Ext" extends "Sales & Receivables Setu
                             Rec.Get;
                             If Confirm('Send Test Email', true) then
                             begin
-                                If Cu.Send_Email_Msg('Test Email','This is a test',False,'') then
+                                If Cu.Send_Email_Msg('Test Email','This is a test',rec."EDI Exception Email Address") then
                                     Message('Email Sent Successfully')
                                 else
                                     Message('Failed To Send Email');
@@ -464,7 +469,18 @@ pageextension 80000 "PC Sales & Rec Setup Ext" extends "Sales & Receivables Setu
                         */    
                     end;
             }
-               
+            action(MSGSX)
+            {
+                ApplicationArea = all;
+                Caption = 'Fix Handles';
+                trigger OnAction()
+                var
+                    CU:Codeunit "PC Shopify Routines";
+                begin
+                    Cu.Fix_Product_Handles();
+                end;
+            }
+                
             action(MSGS2)
             {
                 ApplicationArea = all;
@@ -477,47 +493,19 @@ pageextension 80000 "PC Sales & Rec Setup Ext" extends "Sales & Receivables Setu
                         Cu.Clean_Shopify();
                 end;
             }   
- /*           action(MSGS3)
+            action(MSGS3)
             {
                 ApplicationArea = all;
-                Caption = 'Copy Cost';
+                Caption = 'Refunds ';
                 trigger OnAction()
                 var
-                    PCPrice:Record "PC Purchase Pricing";
-                    PPrice: Record "Purchase Price";
-                    Item:record Item;
+                    CU:Codeunit "PC Shopify Routines";
+                    RefID:BigInteger;
                 begin
-                    PCPRICE.reset;
-                    If PCPrice.findset then PCPrice.Deleteall;
-                    PPrice.reset;
-                    If PPRice.findset then
-                    repeat
-                        PCPrice.init;
-                        PCPrice."Item No." := PPrice."Item No.";
-                        PCPrice."Supplier Code" := PPrice."Vendor No.";
-                        PCPrice."Unit Cost" := PPrice."Direct Unit Cost";
-                        PCPrice."Start Date" := PPrice."Starting Date";
-                        PCPrice."End Date" := PPrice."Ending Date";
-                        PCPrice.insert;        
-                     until PPRice.next = 0;    
-                    Item.reset;
-                    Item.Setfilter("No.",'SKU-9*');
-                    If Item.Findset then
-                    repeat
-                        Item.Update_Parent(); 
-                    Until Item.next = 0;       
-                    Reb.Reset;
-                    If Reb.findset then
-                    repeat
-                        if Item.Get(Reb."Child Item No.") then
-                        begin
-                            Item."Is Child Flag" := True;
-                            Item.Modify(false);
-                        end;     
-                    Until Reb.next = 0;
-                end;
-                
-            } */
+                    //Evaluate(RefID,'4658551390319');
+                    CU.Check_For_Extra_Refunds(0);
+                End;
+            } 
             action(MSGS6)
             {
                 ApplicationArea = all;
@@ -533,10 +521,24 @@ pageextension 80000 "PC Sales & Rec Setup Ext" extends "Sales & Receivables Setu
                     Pg:page "PC Reverse Apply Selections";
                     Sel:Record Item;
                     Em:text;
-
+                    StckUnit:record "Stockkeeping Unit";
+                    PchInvLine:record "Purch. Inv. Line";
+                    Item:Record Item;
+                    SupReb:record "PC Supplier Brand Rebates";
                 begin
+                    CU.Fix_market_Place();
+                    exit;   
+                    CU.Fix_Rebate_Suppliers();
+                    StckUnit.reset;
+                    If StckUnit.findset Then StckUnit.DeleteAll(True);
+                    Exit;
                     //CU1.Process_Out_Of_Stock_Shopify_Items();
                     //exit;
+                  // Cu.Testrun();
+                  //  Exit;
+                    Cu.Fix_Rebates();;
+                    EXIT;
+                    
                     Cu.Fix_con();
                     Cu.Fix_Shopify_Dates();
                     Exit;

@@ -65,26 +65,37 @@ pageextension 80003 "PC Customer List Ext" extends "Customer List"
                 PromotedCategory = Category10;
                 trigger OnAction()
                 begin
-                    Case StrMenu('Refunds,VetChat,Zero $,Campaigns/Auto Delivery,Analysis',1) of
+                    Case StrMenu('Refunds,VetChat,Zero $,Old Auto Delivery,Campaigns/Auto Delivery,Analysis',1) of
+                        0:exit;
                         1:PAGE.Run(PAGE::"PC Refund Processing");
                         2:PAGE.Run(PAGE::"PC Sales VetChat");
                         3:Page.Run(Page::"PC Zero Dollar Process");
-                        4:Page.Run(Page::"PC Campaign_Auto Delivery Proc");
-                        //4:Page.Run(Page::"PC Auto Delivery Processing");
-                        5:PAGE.Run(PAGE::"PC Sales Analysis");
+                        4:Page.Run(Page::"PC Auto Delivery Processing");
+                        5:Page.Run(Page::"PC Campaign_Auto Delivery Proc");
+                        6:PAGE.Run(PAGE::"PC Sales Analysis");
                     end;
                 end;
             }
-    /*        action("PCF")
+            action("PCR")
             {
                 ApplicationArea = All;
-                Caption = 'Shopify Daily Reconciliation';
+                Caption = 'Shopify Refund Checks';
+                Image = Change;
+                Promoted = true;
+                PromotedCategory = Category10;
+                RunObject = Page "PC Refund Checks";
+            }
+
+            action("PCFOLd")
+            {
+                ApplicationArea = All;
+                Caption = 'OLd Shopify Daily Reconciliation';
                 Image = Change;
                 Promoted = true;
                 PromotedCategory = Category10;
                 RunObject = Page "PC Shopify Order Recon";
             }
-    */        
+            
             action("PCF")
             {
                 ApplicationArea = All;

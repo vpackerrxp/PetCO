@@ -8,6 +8,9 @@ page 80036 "PC EDI Exceptions"
     ModifyAllowed = false;
     Caption = 'EDI Exceptions';
    
+    PromotedActionCategoriesML = ENU = 'Pet Culture',
+                                 ENA = 'Pet Culture';
+
     layout
     {
         area(Content)

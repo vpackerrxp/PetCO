@@ -9,6 +9,9 @@ page 80035 "PC Vendor Stock"
     ModifyAllowed = false;
     DeleteAllowed = false;
     Caption ='Supplier Stock Levels';
+    PromotedActionCategoriesML = ENU = 'Pet Culture',
+                                 ENA = 'Pet Culture';
+
     layout
     {
         area(Content)

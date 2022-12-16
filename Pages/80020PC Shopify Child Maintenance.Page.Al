@@ -7,6 +7,9 @@ page 80020 "PC Shopify Child Maintenance"
     InsertAllowed = false;
     DeleteAllowed = false;
     Caption = 'Shopify Child Maintenance';
+    PromotedActionCategoriesML = ENU = 'Pet Culture',
+                                 ENA = 'Pet Culture';
+
     layout
     {
         area(Content)

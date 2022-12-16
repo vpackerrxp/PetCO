@@ -10,6 +10,9 @@ page 80022 "PC Fulfilo Inv Reasons"
     DeleteAllowed = false;
     Editable = false;
    
+    PromotedActionCategoriesML = ENU = 'Pet Culture',
+                                 ENA = 'Pet Culture';
+
     layout
     {
         area(Content)

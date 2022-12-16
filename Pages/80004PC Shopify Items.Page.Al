@@ -4,6 +4,9 @@ page 80004 "PC Shopify Items"
     SourceTable = Item;
     SourceTableView = Where("Shopify Transfer Flag" = Const(true));
     Caption = 'Shopify Items';
+    PromotedActionCategoriesML = ENU = 'Pet Culture',
+                                 ENA = 'Pet Culture';
+
     layout
     {
         area(Content)

@@ -6,6 +6,9 @@ page 80026 "PC ASN Tracking"
     InsertAllowed = false;
     ModifyAllowed = false;
        
+    PromotedActionCategoriesML = ENU = 'Pet Culture',
+                                 ENA = 'Pet Culture';
+
     layout
     {
         area(content)

@@ -9,6 +9,9 @@ page 80031 "PC Zero Dollar Process"
     DeleteAllowed = false;
     ModifyAllowed = false;
    
+    PromotedActionCategoriesML = ENU = 'Pet Culture',
+                                 ENA = 'Pet Culture';
+
     layout
     {
        area(Content)

@@ -6,10 +6,13 @@ page 80032 "PC Auto Delivery Processing"
     ApplicationArea = All;
     SourceTable = "Sales Invoice Line";
     SourceTableTemporary = true;
-    Permissions = tabledata 113 = rmid;
+    Permissions = tabledata "Sales Invoice Line" = rmid;
     InsertAllowed = false;
     DeleteAllowed = false;
     ModifyAllowed = false;
+    PromotedActionCategoriesML = ENU = 'Pet Culture',
+                                 ENA = 'Pet Culture';
+
     layout
     {
        area(Content)
@@ -133,6 +136,7 @@ page 80032 "PC Auto Delivery Processing"
                     ApplicationArea = All;
                     Style = Unfavorable;
                     ShowCaption = false;
+                    Editable = False;
                 }
             } 
             repeater(Group)
@@ -230,6 +234,7 @@ page 80032 "PC Auto Delivery Processing"
                     ApplicationArea = All;
                     Editable = false;
                     Caption = 'Rebate Amount';
+                    Style = Strong;
                 }
                 field("Claim Status"; rec."Palatability Status")
                 {
@@ -294,7 +299,10 @@ page 80032 "PC Auto Delivery Processing"
                 ApplicationArea = All;
                 trigger OnAction();
                 var
-                    SupReb:Record "PC Supplier brand Rebates"; 
+                    //SupReb:Record "PC Supplier brand Rebates";
+                    PurchCst:record "PC Purchase Pricing";
+                    CmpReb:record "PC Campaign Rebates";
+                    CmpSku:record "PC Campaign SKU New";
                     SInvLine:record "Sales Invoice Line";
                     SalesHdr:record "Sales Header";
                     SalesLine:record "Sales Line";
@@ -355,11 +363,24 @@ page 80032 "PC Auto Delivery Processing"
                                     SInvline.Setrange("Rebate Supplier No.",vend."No.");
                                     If Sinvline.Findset then
                                     repeat
-                                        SupReb.reset;
-                                        SupReb.Setrange("Supplier No.",vend."No.");
-                                        SupReb.Setrange(Brand,SInvLine."Rebate Brand");
-                                        If SupReb.Findset then    
-                                            ClaimTot +=  SInvLine."Unit Cost" * SInvLine."Quantity (Base)" * SupReb."Auto Order Rebate %"/100;   
+                                        CmpReb.Reset;
+                                        CmpReb.Setrange("Rebate Type",CmpReb."Rebate Type"::"Auto Delivery");
+                                        CmpReb.Setrange("Rebate Supplier No.",SInvLine."Rebate Supplier No.");
+                                        If CmpReb.FindSet() then
+                                        Begin
+                                            CmpSku.Reset;
+                                            CmpSku.Setrange("Rebate Supplier No.",CmpReb."Rebate Supplier No.");
+                                            CmpSku.Setrange(Campaign,CmpReb.Campaign);
+                                            CmpSku.Setrange(SKU,SInvLine."No.");
+                                            If CmpSku.FindSet() then
+                                            Begin
+                                                PurchCst.Reset;
+                                                PurchCst.Setrange("Item No.",CmpSku.SKU);
+                                                PurchCst.Setrange("Supplier Code",CmpSku."Rebate Supplier No.");
+                                                If PurchCst.Findset then
+                                                    ClaimTot +=  PurchCst."Unit Cost" * SInvLine."Quantity (Base)" * CmpSku."Rebate Amount"/100;   
+                                           end;
+                                        end;    
                                     Until SInvline.Next = 0;
                                     If ClaimTot > 0 then 
                                     begin
@@ -437,11 +458,24 @@ page 80032 "PC Auto Delivery Processing"
                                     SInvline.Setrange("Rebate Supplier No.",vend."No.");
                                     If Sinvline.Findset then
                                     repeat
-                                        SupReb.reset;
-                                        SupReb.Setrange("Supplier No.",vend."No.");
-                                        SupReb.Setrange(Brand,SInvLine."Rebate Brand");
-                                        If SupReb.Findset then    
-                                            ClaimTot +=  SInvLine."Unit Cost" * SInvLine."Quantity (Base)" * SupReb."Auto Order Rebate %"/100;   
+                                        CmpReb.Reset;
+                                        CmpReb.Setrange("Rebate Type",CmpReb."Rebate Type"::"Auto Delivery");
+                                        CmpReb.Setrange("Rebate Supplier No.",SInvLine."Rebate Supplier No.");
+                                        If CmpReb.FindSet() then
+                                        Begin
+                                            CmpSku.Reset;
+                                            CmpSku.Setrange("Rebate Supplier No.",CmpReb."Rebate Supplier No.");
+                                            CmpSku.Setrange(Campaign,CmpReb.Campaign);
+                                            CmpSku.Setrange(SKU,SInvLine."No.");
+                                            If CmpSku.FindSet() then
+                                            Begin
+                                                PurchCst.Reset;
+                                                PurchCst.Setrange("Item No.",CmpSku.SKU);
+                                                PurchCst.Setrange("Supplier Code",CmpSku."Rebate Supplier No.");
+                                                If PurchCst.Findset then
+                                                    ClaimTot +=  PurchCst."Unit Cost" * SInvLine."Quantity (Base)" * CmpSku."Rebate Amount"/100;   
+                                           end;
+                                        end;    
                                     Until SInvline.Next = 0;
                                     If ClaimTot > 0 then 
                                     begin
@@ -554,6 +588,7 @@ page 80032 "PC Auto Delivery Processing"
         SINV.Setrange(Type,SINV.type::Item);
         SINV.SetFilter("No.",'SKU*');
         SINV.Setrange("Auto Delivered",True);
+        SINV.SetRange("Auto Delivery Rebate Supplier",'');
         if (PostDate[1] <> 0D) AND ( PostDate[2] <> 0D) then
             SINV.SetRange("Posting Date",PostDate[1],PostDate[2])
         else if (PostDate[1] <> 0D) then
@@ -650,11 +685,28 @@ page 80032 "PC Auto Delivery Processing"
     end;
     local procedure Get_Auto_Claim_Amount():Decimal;
     var
-        SupReb:record "PC Supplier Brand Rebates";
+        CmpReb:record "PC Campaign Rebates";
+        CmpSku:record "PC Campaign SKU New";
+        PurchCst:record "PC Purchase Pricing";
     begin
-        SupReb.Reset;
-        SupReb.Setrange(Brand,Rec.Brand);
-        If SupReb.Findset then Exit(Rec."Unit Cost" * Rec.Quantity * SupReb."Auto Order Rebate %"/100);    
+        CmpReb.Reset;
+        CmpReb.Setrange("Rebate Type",CmpReb."Rebate Type"::"Auto Delivery");
+        CmpReb.Setrange("Rebate Supplier No.",Rec."Rebate Supplier No.");
+        If CmpReb.FindSet() then
+        Begin
+            CmpSku.Reset;
+            CmpSku.Setrange("Rebate Supplier No.",CmpReb."Rebate Supplier No.");
+            CmpSku.Setrange(Campaign,CmpReb.Campaign);
+            CmpSku.Setrange(SKU,Rec."No.");
+            If CmpSku.FindSet() then
+            Begin
+                PurchCst.Reset;
+                PurchCst.Setrange("Item No.",CmpSku.SKU);
+                PurchCst.Setrange("Supplier Code",CmpSku."Rebate Supplier No.");
+                If PurchCst.Findset then
+                    exit(PurchCst."Unit Cost" * rec."Quantity (Base)" * CmpSku."Rebate Amount"/100);   
+            end;
+        end;    
         Exit(0);    
     end;
 

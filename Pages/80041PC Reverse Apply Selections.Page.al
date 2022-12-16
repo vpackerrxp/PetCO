@@ -4,6 +4,9 @@ page 80041 "PC Reverse Apply Selections"
     PageType = List;
     SourceTable = Item;
     SourceTableTemporary = true;
+    PromotedActionCategoriesML = ENU = 'Pet Culture',
+                                 ENA = 'Pet Culture';
+
     layout
     {
         area(content)

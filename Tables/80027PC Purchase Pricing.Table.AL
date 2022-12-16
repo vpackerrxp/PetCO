@@ -44,5 +44,9 @@ table 80027 "PC Purchase Pricing"
         {
             Clustered = true;
         }
+        key(Key2;"End Date")
+        {
+            
+        }
     }
 }

@@ -343,6 +343,14 @@ tableextension 80001 "PC Items Ext" extends Item
                 end;
             end;    
         }
+        Field(80036;"Shopify Product Handle";Text[100])
+        {
+            Editable = False;
+        }
+
+
+
+
     }
     Procedure Update_Parent()
     var
@@ -362,11 +370,10 @@ tableextension 80001 "PC Items Ext" extends Item
             Clear(rec."Shopify Update Flag");
         end;
     end;
-    procedure Get_Price():Decimal
+    procedure Get_Price(var RRP:decimal):Decimal
     var
         Sp:Record "PC Shopfiy Pricing";
         val:Decimal;
-        RRP:decimal;
     begin
         Val := 99999;
         Clear(RRP);
@@ -383,11 +390,7 @@ tableextension 80001 "PC Items Ext" extends Item
             end;    
         Until Sp.next = 0;
         If (RRP > 0) and (RRP <> rec."Unit Price") then 
-        begin
             rec."Unit Price" := RRP;
-            rec.Modify(False);
-            Commit;
-        end;
         If val = 99999 then val := rec."Unit Price";
         exit(val);
     end;

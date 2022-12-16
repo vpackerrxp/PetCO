@@ -10,6 +10,9 @@ page 80005 "PC EDI Execution Log"
     InsertAllowed = false;
     ModifyAllowed = false;
     
+    PromotedActionCategoriesML = ENU = 'Pet Culture',
+                                 ENA = 'Pet Culture';
+
     layout
     {
         area(content)

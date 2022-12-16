@@ -11,6 +11,9 @@ page 80021 "PC Inventory Maintenance"
     DeleteAllowed = false;
     RefreshOnActivate = true;   
 
+    PromotedActionCategoriesML = ENU = 'Pet Culture',
+                                 ENA = 'Pet Culture';
+
     layout
     {
         area(Content)

@@ -101,13 +101,14 @@ tableextension 80000 "PC Sales & Receivables Ext " extends "Sales & Receivables 
         field(80046; "Debug End Date"; Date)
         {
         }
-
-
         field(80050; "Gift Card Order Index"; Biginteger)
         {}
-
-
-
-
+        field(80051; "Ext Refund Order Lookback Per"; integer)
+        {
+            MinValue = 1;
+            InitValue = 2;
+            MaxValue = 4;
+            Caption = 'Extra Refund Order Lookback Period in Months';
+        }
     }
 }
